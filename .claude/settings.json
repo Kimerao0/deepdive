@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-human-code.sh",
+            "statusMessage": "Checking who is allowed to write this file"
+          }
+        ]
+      }
+    ]
+  }
+}
