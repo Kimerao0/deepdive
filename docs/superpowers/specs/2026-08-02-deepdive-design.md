@@ -1,8 +1,11 @@
 # deepdive — Design
 
 **Date:** 2026-08-02
-**Status:** Approved, ready for planning
+**Amended:** 2026-08-03 — extended to three RSC implementations; stack decisions moved out
+**Status:** Approved
 **Author:** Alessandro Ceruti
+
+> **Authority note.** This document owns the *game and architecture* design: the isomorphic engine, the action lifecycle, the data model, the social layer, and the testing strategy. It does **not** own stack choices or repository structure — `docs/decisions/0001-stack.md` supersedes it on those, and wins in any conflict. Where this document says "Next", read "the first of three apps".
 
 ---
 
@@ -10,8 +13,10 @@
 
 `deepdive` is a public portfolio repository with two jobs:
 
-1. **Learning.** Deepen modern React (19.2) and Next.js (16) knowledge, and strengthen backend skills — the author's weaker area — through server-authoritative state, transactions, and cache invalidation.
+1. **Learning.** Deepen modern React (19.2) knowledge and strengthen backend skills — the author's weaker area — through server-authoritative state, transactions, and cache invalidation.
 2. **Evidence.** Show a technical recruiter or engineer, in under two minutes, that the author can design a system, justify every dependency, and ship it green and deployed.
+
+The design below is implemented **three times** — on Next, on React Router + Fastify, and on TanStack Start — sharing one engine and one database. The game is the fixture; the comparison of RSC implementations is the artifact. See `docs/roadmap.md` for sequencing, and note the gate: the Next app must be finished and deployed before the second begins.
 
 **Guiding principle:** every modern React API in this project must solve a real problem in this project. APIs that would only be present as a showcase are explicitly rejected, and the rejections are documented — the cut list is part of the deliverable.
 
@@ -63,17 +68,21 @@ This is client-side prediction — a real, classic problem in game engineering �
 
 ## 4. Modules and boundaries
 
-One rule holds the design together: **`engine/` imports nothing from any other module.** No React, no Drizzle, no `next/*`, no `Math.random`, no `Date.now`. Enforced by an ESLint import-boundary rule in CI, not by discipline.
+One rule holds the design together: **`packages/engine` imports nothing from any other module.** No React, no Drizzle, no framework, no `Math.random`, no `Date.now`. Enforced by an ESLint import-boundary rule in CI, not by discipline.
 
-| Module | Responsibility | Depends on |
-|---|---|---|
-| `engine/` | `apply(world, action) → Ok(world') \| Rejected(reason)`. Seeded generation, combat, loot, rules. Pure and deterministic. | nothing |
-| `db/` | Drizzle schema and repositories. Knows rows, not rules. | drizzle |
-| `server/` | Server Actions. The only place with authority: transaction → `engine.apply` → persist. | engine, db |
-| `app/` | RSC tree and the few Client Components. Orchestration, not logic. | server, ui |
-| `ui/` | Presentational components. Do not know what a dungeon is. | nothing |
+That rule is also what makes the three-app plan possible: a framework-free engine can be consumed by any of them unchanged.
 
-Randomness and time enter `engine/` only as explicit inputs (seed, tick counter), never ambient. This is what makes determinism testable.
+| Location | Responsibility | Depends on | Shared |
+|---|---|---|---|
+| `packages/engine` | `apply(world, action) → Ok(world') \| Rejected(reason)`. Seeded generation, combat, loot, rules. Pure and deterministic. | nothing | all three apps |
+| `packages/db` | Drizzle schema and repositories. Knows rows, not rules. | drizzle, pg | all three apps |
+| `packages/ui` | Presentational components. Do not know what a dungeon is. Extracted only once duplication proves what's genuinely common — not designed up front. | nothing | eventually |
+| `apps/*/server` | The transport and the only place with authority: transaction → `engine.apply` → persist. Server Actions in Next, HTTP routes in React Router, server functions in TanStack. | engine, db | per app |
+| `apps/*/app` | RSC tree and the few Client Components. Orchestration, not logic. | server, ui | per app |
+
+**`apps/*` may never import from another app.** Also lint-enforced — without it, the comparison quietly turns into shared code with three thin wrappers, which measures nothing.
+
+Randomness and time enter the engine only as explicit inputs (seed, tick counter), never ambient. This is what makes determinism testable, and the determinism test is what makes three implementations comparable at all.
 
 ---
 
@@ -153,7 +162,7 @@ Idempotency is a **database constraint**, not application code. If the INSERT co
 
 - **Corpses.** On death, a `corpse` trace is written at the death tile with the cause. Players on the same `seed` and `depth` see it.
 - **Messages.** Composed from a **closed vocabulary** (template plus noun, Dark Souls style), never free text. This is a product decision, not laziness: it eliminates moderation, abuse, and XSS at the source, and makes the content translatable. Documented as such in the README.
-- **Queries** by `(seed, depth)`, cached with `cacheTag`, invalidated with `updateTag` on write.
+- **Queries** by `(seed, depth)`, cached with `cacheTag`, invalidated with `updateTag` on write. Those two are **Next-proprietary**; the other two apps replace them with a hand-rolled tag-indexed cache, which is a better way to learn what that layer does than using it.
 - **Rate limit** per session, otherwise the first bot fills the dungeon.
 - **The seed lives in the URL** — a shareable link: *"replay the dungeon I died in."*
 
@@ -173,6 +182,8 @@ Nothing is hidden behind a panel toggle on desktop. Immediate legibility was cho
 
 **Mobile:** the side columns collapse into tabs below the grid, kept mounted via `<Activity>` so scroll position and state survive tab switches.
 
+**Styling:** CSS Modules with custom properties in `:root` for tile size, colours and spacing — no UI kit, no utility framework. Zero runtime, so styling a static panel never forces a client boundary. Rationale and rejected alternatives in ADR 0001.
+
 **Identity:** anonymous signed-cookie session — open the link and play, no registration. Optional GitHub link afterwards to make the save durable. Zero friction is a product feature here: a recruiter will not sign up for a portfolio game.
 
 ---
@@ -181,8 +192,8 @@ Nothing is hidden behind a panel toggle on desktop. Immediate legibility was cho
 
 Ordered by return on investment.
 
-1. **`engine/` — unit tests (Vitest), high coverage, no excuses.** Pure and deterministic: no mocks, no setup, fast. Property-based tests (fast-check) on the invariant that matters: *applying the same action sequence to the same seed always yields the same world.* If that holds, client and server cannot diverge. This is the test that justifies the architecture.
-2. **Server Actions — integration tests against real Postgres** (container or ephemeral Neon branch, not a mock). The required test: *two concurrent calls with the same `seq` apply exactly once.*
+1. **`packages/engine` — unit tests (Vitest), high coverage, no excuses.** Pure and deterministic: no mocks, no setup, fast. Property-based tests (fast-check) on the invariant that matters: *applying the same action sequence to the same seed always yields the same world.* If that holds, client and server cannot diverge — and neither can the three apps. This is the test that justifies the architecture.
+2. **The transport layer — integration tests against real Postgres** (local Docker Compose, not a mock). The required test: *two concurrent calls with the same `seq` apply exactly once.* Written once per app, since each has a different transport.
 3. **Playwright — few and targeted.** One journey: start run → move → kill an enemy → die → confirm the corpse appears in a fresh run with the same seed.
 
 **No tests on presentational components** — they prove nothing and break on their own.
@@ -191,11 +202,12 @@ Ordered by return on investment.
 
 ## 11. CI/CD and deployment
 
-- **GitHub Actions:** typecheck, lint (including the `engine/` import-boundary rule), unit, integration, build. Branch protection on `main`.
-- **Vercel** for hosting, **Neon** via the Vercel Marketplace. Preview deployments per PR.
+- **GitHub Actions:** typecheck, lint (including both import-boundary rules), unit, integration, build. Branch protection on `main`.
+- **Postgres:** Docker Compose locally and as a CI service container; **Neon** for deployed environments.
+- **Hosting:** `apps/next` on Vercel. `apps/react-router` on a Node host, deliberately — deploying a server you wrote yourself is part of the point. `apps/tanstack` wherever its adapters reach.
 - `main` is always green and always deployable — the standing commitment that comes with incremental development and no deadline.
 
-**Pinned versions verified on npm, 2026-08-02:** `react@19.2.8`, `next@16.2.12`.
+**Pinned versions verified on npm:** `react@19.2.8`, `next@16.2.12` (2026-08-02); `react-router@8.3.0`, `@tanstack/react-start@1.168.34` (2026-08-03). Full stack rationale in ADR 0001.
 
 ---
 
@@ -222,7 +234,9 @@ Development is incremental with no deadline, but the first milestone is a comple
 - Anonymous session persistence
 - Deployed, green CI, README with GIF
 
-Everything else — multiple floors, classes, equipment, skill trees, appraisals — comes after, and only if the slice is genuinely finished.
+This slice is built **on `apps/next` only**. Everything else — multiple floors, classes, equipment, skill trees, appraisals — comes after, and only if the slice is genuinely finished.
+
+**The gate:** `apps/react-router` does not begin until this slice is deployed, green, and playable by a stranger. A repo with one finished app and two half-built ones reads worse than one finished app, and the three-way comparison is void unless all three implement the same feature set.
 
 ---
 
@@ -235,5 +249,8 @@ Everything else — multiple floors, classes, equipment, skill trees, appraisals
 | Optimistic rollback may feel jarring when the server rejects | Tune with a brief visual "rejected" state rather than a silent snap-back |
 | Cost of an always-on Neon instance | Neon free tier plus scale-to-zero; monitor |
 | Procedural generation producing unplayable floors | Connectivity invariant in the generator, covered by property-based tests |
+| **Scope: three apps is the main threat to finishing at all** | Hard gate above. If the second app stalls, the honest move is to delete it and ship the Next app alone rather than leave it half-built |
+| **React Router and TanStack RSC APIs are experimental** (`unstable_`-prefixed and `0.1.x` respectively) | They come last, when the engine and database are already proven, so breakage costs transport code and not the project. Pin exact versions; expect breaks in patch releases |
+| **`packages/ui` shared across three bundlers** | Don't share it up front. Duplicate, then extract once duplication shows what is genuinely common |
 
 **Decided:** curated rooms are authored as **data** — JSON templates validated by a Zod schema at load time, placed by the generator. Not code. This keeps `engine/` pure (content is an input, not a branch), keeps authored content diffable in review, and makes the room set testable as fixtures.
