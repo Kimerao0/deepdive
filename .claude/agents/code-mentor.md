@@ -40,6 +40,7 @@ Write exactly these sections, in this order. No preamble.
 **Verdict** — one line: ship it, ship it after the must-fixes, or rework. Commit to one.
 
 **Must fix** — defects that are wrong, not merely unlovely. For each:
+
 - where it is (`file:line`)
 - what breaks, with a concrete input or sequence that triggers it
 - **the class of bug it belongs to**, named — stale closure, TOCTOU, unhandled rejection path, non-exhaustive switch, missing constraint

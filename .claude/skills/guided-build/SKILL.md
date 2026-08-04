@@ -7,13 +7,18 @@ description: Use when any development work happens in the deepdive repo — star
 
 ## Overview
 
-**In this repo Alessandro writes every line of source. Claude never does.**
+**In this repo Alessandro writes every line that carries a decision. Claude writes the scaffolding around it.**
 
-deepdive exists so its author can answer any question about any file in it — in an interview, or to himself at 3am six months from now. Code Claude wrote is code he cannot defend. **Handing him working code is the failure, not the service.**
+deepdive exists so its author can answer any question about any file in it — in an interview, or to himself at 3am six months from now. Code Claude wrote is code he cannot defend. **Handing him working logic is the failure, not the service.**
 
-**Violating the letter of this rule is violating the spirit of it.**
+The line, revised 2026-08-04 by Alessandro after the 0.1 scaffolding proved the original rule was buying friction rather than learning:
 
-A `PreToolUse` hook blocks Write/Edit outside `docs/` and `.claude/`. The hook is a backstop, not the rule. Routing around it is a worse violation than the write would have been.
+- **Claude writes:** declarative config (`package.json`, `tsconfig*.json`, `pnpm-workspace.yaml`, `*.config.*`, CI workflows), plus mechanical source with no design content — a root `layout.tsx`, a barrel re-export, a placeholder export that a later item deletes. Claude explains every choice it makes, so the _reasoning_ is still his.
+- **Alessandro writes:** anything with behaviour or a type he would have to defend. Engine rules, reducers, components with real state, schemas, tests, queries. Everything under `packages/*/src/` and every non-trivial file under `apps/*/app/`.
+
+**The dangerous direction is one-way:** the temptation is to relabel logic as "boilerplate". A file is boilerplate only if it would look the same in any project. The moment a decision about _this_ game enters it, it's his.
+
+A `PreToolUse` hook enforces the path half of this mechanically. The hook is a backstop, not the rule — it cannot tell boilerplate from logic, so judgment is still required on Claude's side. Routing around it is a worse violation than the write would have been.
 
 ## The Loop
 
@@ -25,7 +30,7 @@ Claude writes exactly these three parts, then stops and waits:
 
 1. **Goal** — what must be true when this item is done, in behavioural terms. Not "add a reducer" but "an illegal move never reaches the network".
 2. **Options** — 2–3 genuinely different approaches. For each: what it costs, what it buys. Mark one recommended and say why.
-3. **Traps** — the specific ways *this* item goes wrong in *this* codebase. Not generic risk-register filler.
+3. **Traps** — the specific ways _this_ item goes wrong in _this_ codebase. Not generic risk-register filler.
 
 End with the question that decides the approach. Stop.
 
@@ -58,7 +63,8 @@ Dispatch the `code-mentor` agent against what he wrote. Relay its findings; disa
 
 ## Red Flags — STOP
 
-- A code block containing a working implementation, in any language, for any reason
+- A code block containing working logic, in any language, for any reason
+- Calling something boilerplate because writing it would be faster than describing it
 - "Here's roughly what it looks like…"
 - Writing the test so he only has to write the implementation
 - Reaching for Bash/heredoc/`/tmp` after the hook blocks a Write
@@ -69,19 +75,31 @@ Dispatch the `code-mentor` agent against what he wrote. Relay its findings; disa
 
 ## Rationalizations
 
-| Excuse | Reality |
-|---|---|
-| "He's stuck and frustrated, one snippet unblocks him" | Stuck is where the learning is. The snippet ends it. Give the concept. |
-| "It's config/boilerplate, not real code" | He chose *literally every line*. He'll be asked why that flag is on. |
-| "He just asked me directly to write it" | He set this rule while calm, to bind himself while tired. Restate it, offer rung 2. Only deliberately deleting the hook changes the rule. |
-| "I'll write it as an example, he retypes it" | Retyping is transcription. Same outcome, more theatre. |
-| "It's a one-liner" | Then describing it costs one line too. |
-| "Writing only the failing test is a legit TDD handoff" | Not here. Describe what the test must pin down. |
-| "The hook allows /tmp" | The hook is a guard, not the rule. Routing around it is the violation. |
-| "He's written this pattern before, nothing left to learn" | Then he'll type it in two minutes. |
-| "We're behind" | There is no deadline. Incremental was chosen deliberately. |
-| "Phase 1 is overkill for something this small" | Small items are where unexamined assumptions survive. |
+| Excuse                                                    | Reality                                                                                                                                                         |
+| --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| "He's stuck and frustrated, one snippet unblocks him"     | Stuck is where the learning is. The snippet ends it. Give the concept.                                                                                          |
+| "It's config, so it's mine to write"                      | True — _and_ explain every choice in it. Config Claude wrote silently is config he can't defend either.                                                         |
+| "It's basically boilerplate"                              | Boilerplate is what would look identical in any project. If a decision about _this_ game is in it, it's his. When unsure, it's his.                             |
+| "He asked me to write a piece of logic"                   | He drew this line while calm, knowing he'd want to cross it while tired. Restate where the line is, offer rung 2. Only a deliberate edit to this file moves it. |
+| "I'll write it as an example, he retypes it"              | Retyping is transcription. Same outcome, more theatre.                                                                                                          |
+| "It's a one-liner"                                        | Then describing it costs one line too.                                                                                                                          |
+| "Writing only the failing test is a legit TDD handoff"    | Not here. Describe what the test must pin down.                                                                                                                 |
+| "The hook allows /tmp"                                    | The hook is a guard, not the rule. Routing around it is the violation.                                                                                          |
+| "He's written this pattern before, nothing left to learn" | Then he'll type it in two minutes.                                                                                                                              |
+| "We're behind"                                            | There is no deadline. Incremental was chosen deliberately.                                                                                                      |
+| "Phase 1 is overkill for something this small"            | Small items are where unexamined assumptions survive.                                                                                                           |
 
 ## What Claude May Write
 
-`docs/**` and `.claude/**`. That's the whole list. Roadmap updates, ADRs, specs, this skill, the agents.
+| Path                                                  | Examples                                                 |
+| ----------------------------------------------------- | -------------------------------------------------------- |
+| `docs/**`, `.claude/**`                               | Roadmap updates, ADRs, specs, this skill, the agents     |
+| `*.json`, `*.yaml`, `*.yml` outside `src/` and `app/` | `package.json`, `tsconfig*.json`, `pnpm-workspace.yaml`  |
+| `*.config.*`                                          | `next.config.ts`, `vitest.config.ts`, `eslint.config.js` |
+| `.github/**`                                          | CI workflows                                             |
+| Root dotfiles                                         | `.gitignore`, `.npmrc`, `.env.example`                   |
+| `apps/*/app/layout.tsx`                               | Root layouts — required shape, no design content         |
+
+Everything else is his, including any `.json` under a `src/` directory: room templates at 1.4 are authored content, not config.
+
+Claude states _why_ for every line it writes here. A silent config write fails the point of the repo just as badly as writing his reducer would.
