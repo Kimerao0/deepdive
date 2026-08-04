@@ -8,6 +8,9 @@
   },
   "author": "Alessandro Ceruti",
   "devDependencies": {
-    "typescript": "6.0.3"
+    "typescript": "catalog:"
+  },
+  "scripts": {
+    "typecheck": "pnpm -r typecheck"
   }
 }
