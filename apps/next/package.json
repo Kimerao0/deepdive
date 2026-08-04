@@ -1,0 +1,21 @@
+{
+  "name": "@deepdive/next",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "next": "16.2.12",
+    "react": "catalog:",
+    "react-dom": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@types/node": "catalog:"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "typecheck": "tsc"
+  }
+}
