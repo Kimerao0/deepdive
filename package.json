@@ -1,0 +1,13 @@
+{
+  "name": "deepdive",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.18.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "author": "Alessandro Ceruti",
+  "devDependencies": {
+    "typescript": "6.0.3"
+  }
+}
