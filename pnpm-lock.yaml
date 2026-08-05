@@ -38,6 +38,12 @@ importers:
 
   apps/next:
     dependencies:
+      '@deepdive/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@deepdive/engine':
+        specifier: workspace:*
+        version: link:../../packages/engine
       next:
         specifier: 16.2.12
         version: 16.2.12(react-dom@19.2.8(react@19.2.8))(react@19.2.8)

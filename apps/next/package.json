@@ -5,7 +5,9 @@
   "dependencies": {
     "next": "16.2.12",
     "react": "catalog:",
-    "react-dom": "catalog:"
+    "react-dom": "catalog:",
+    "@deepdive/engine": "workspace:*",
+    "@deepdive/db": "workspace:*"
   },
   "devDependencies": {
     "typescript": "catalog:",
