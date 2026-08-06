@@ -24,12 +24,14 @@ A review that never ran the tests is a guess wearing a suit.
 
 These are load-bearing. A violation is never a nitpick.
 
-- **`src/engine/` imports nothing.** No React, no Drizzle, no `next/*`, no `src/db`, no `src/server`.
+- **`packages/engine` imports nothing.** No React, no Drizzle, no `next/*`, no `@deepdive/db`, no app code. In production files, that is — test files may import dev tooling (vitest, fast-check), and the boundary matrix in `docs/decisions/0002-scope-audit.md` is the authority.
+- **`packages/db` never imports `packages/engine`.** The action-transaction helper receives the apply function as a callback (ADR 0002). A direct engine import in db is a finding.
+- **No app imports another app.** The comparison is void otherwise.
 - **No ambient nondeterminism in the engine.** No `Math.random()`, no `Date.now()`, no `new Date()`. Randomness enters as seed + cursor, time as an explicit tick.
 - **The engine is the same code on both sides.** If client and server can compute different results for the same input, the architecture is broken.
-- **Server actions are transactional.** Row lock, then the `(run_id, seq)` insert, then the state write — one transaction or none.
+- **The action path is transactional**, whatever the transport. Row lock, then the `(run_id, seq)` insert, then the state write — one transaction or none.
 - **Idempotency is enforced by the database constraint**, not by an `if` in application code.
-- **No manual `memo` / `useMemo` / `useCallback`.** React Compiler owns that. Hand-written memoisation is a finding.
+- **No manual `memo` / `useMemo` / `useCallback`.** React Compiler owns that. Hand-written memoisation is a finding — unless it is the documented compiler-fallback the design spec's risk table allows, in which case demand the README correction that comes with it.
 - **No Redux, Zustand, or `useSyncExternalStore`.** Deliberately cut. Their reappearance is a finding.
 - **No canvas.** The grid is DOM.
 

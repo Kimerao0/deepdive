@@ -2,6 +2,7 @@
 
 **Date:** 2026-08-02
 **Amended:** 2026-08-03 — extended to three RSC implementations; stack decisions moved out
+**Amended:** 2026-08-06 — audit decisions: descend confirmed core, minimal loot added to scope, action transaction moved to a `packages/db` helper, unbuilt-feature columns dropped from the schema. See `docs/decisions/0002-scope-audit.md`
 **Status:** Approved
 **Author:** Alessandro Ceruti
 
@@ -69,13 +70,13 @@ One rule holds the design together: **`packages/engine` imports nothing from any
 
 That rule is also what makes the three-app plan possible: a framework-free engine can be consumed by any of them unchanged.
 
-| Location          | Responsibility                                                                                                                                                              | Depends on  | Shared         |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | -------------- |
-| `packages/engine` | `apply(world, action) → Ok(world') \| Rejected(reason)`. Seeded generation, combat, loot, rules. Pure and deterministic.                                                    | nothing     | all three apps |
-| `packages/db`     | Drizzle schema and repositories. Knows rows, not rules.                                                                                                                     | drizzle, pg | all three apps |
-| `packages/ui`     | Presentational components. Do not know what a dungeon is. Extracted only once duplication proves what's genuinely common — not designed up front.                           | nothing     | eventually     |
-| `apps/*/server`   | The transport and the only place with authority: transaction → `engine.apply` → persist. Server Actions in Next, HTTP routes in React Router, server functions in TanStack. | engine, db  | per app        |
-| `apps/*/app`      | RSC tree and the few Client Components. Orchestration, not logic.                                                                                                           | server, ui  | per app        |
+| Location          | Responsibility                                                                                                                                                                                                                          | Depends on  | Shared         |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | -------------- |
+| `packages/engine` | `apply(world, action) → Ok(world') \| Rejected(reason)`. Seeded generation, combat, loot, rules. Pure and deterministic.                                                                                                                | nothing     | all three apps |
+| `packages/db`     | Drizzle schema, repositories, and the action-transaction helper: it owns the `FOR UPDATE → insert → state write` shape and receives the apply function as a callback, so it never imports the engine (ADR 0002). Knows rows, not rules. | drizzle, pg | all three apps |
+| `packages/ui`     | Presentational components. Do not know what a dungeon is. Extracted only once duplication proves what's genuinely common — not designed up front.                                                                                       | nothing     | eventually     |
+| `apps/*/server`   | The transport and the only place with authority: it invokes the db transaction helper with `engine.apply` injected. Server Actions in Next, HTTP routes in React Router, server functions in TanStack.                                  | engine, db  | per app        |
+| `apps/*/app`      | RSC tree and the few Client Components. Orchestration, not logic.                                                                                                                                                                       | server, ui  | per app        |
 
 **`apps/*` may never import from another app.** Also lint-enforced — without it, the comparison quietly turns into shared code with three thin wrappers, which measures nothing.
 
@@ -131,12 +132,12 @@ One step north:
 
 Postgres (Neon) with Drizzle.
 
-| Table     | Columns                                                                                                                               |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `players` | `id`, `session_id` (signed cookie), `github_id` (nullable, optional upgrade), `display_name` (nullable), `created_at`                 |
-| `runs`    | `id`, `player_id`, `seed`, `depth`, `status` (`active` \| `dead` \| `escaped`), `world` (jsonb), `last_seq`, `created_at`, `ended_at` |
-| `actions` | **PK `(run_id, seq)`**, `payload` (jsonb), `created_at`                                                                               |
-| `traces`  | `id`, `seed`, `depth`, `x`, `y`, `kind` (`corpse` \| `message`), `body`, `killed_by`, `appraisals`, `author_run_id`, `created_at`     |
+| Table     | Columns                                                                                                                                                                                   |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `players` | `id`, `session_id` (signed cookie), `display_name` (nullable), `created_at` — `github_id` dropped until the linking feature is roadmapped (ADR 0002)                                      |
+| `runs`    | `id`, `player_id`, `seed`, `depth`, `status` (`active` \| `dead` \| `escaped`), `world` (jsonb), `last_seq`, `created_at`, `ended_at`                                                     |
+| `actions` | **PK `(run_id, seq)`**, `payload` (jsonb), `created_at`                                                                                                                                   |
+| `traces`  | `id`, `seed`, `depth`, `x`, `y`, `kind` (`corpse` \| `message`), `body`, `killed_by`, `author_run_id`, `created_at` — `appraisals` dropped: the voting feature is out of scope (ADR 0002) |
 
 ### The action transaction
 

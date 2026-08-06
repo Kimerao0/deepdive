@@ -4,7 +4,7 @@ Every item below runs through the four-phase loop in `.claude/skills/guided-buil
 
 1. **Frame** — goal, options, traps. Claude writes it, Alessandro picks.
 2. **Plan** — files, contracts, tests to satisfy, order. Claude writes it, Alessandro approves.
-3. **Build** — Alessandro writes the code. Claude answers questions, never writes.
+3. **Build** — Alessandro writes everything that carries a decision; Claude writes scaffolding-only files per the revised rule in the skill, proposing before writing.
 4. **Review** — the `code-mentor` agent, then this file gets ticked.
 
 This document deliberately contains **no code**. Contracts and signatures arrive at phase 2, per item, when they're about to be used.
@@ -52,17 +52,18 @@ Deliverable: an empty monorepo that builds, lints, tests, and goes red in CI whe
 
 Pure TypeScript. No React, no database, no I/O. The heart of the project, and the part worth being slow about. Shared by all three apps unchanged.
 
-| #   | Item                      | Done when                                                                         | Teaches                                                                        |
-| --- | ------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| 1.1 | Core types                | `WorldState`, `Action`, `ApplyResult` exist and make illegal states hard to build | Discriminated unions instead of booleans                                       |
-| 1.2 | Deterministic RNG         | Same (seed, cursor) always yields the same number; no ambient randomness anywhere | Why `Math.random()` would silently destroy the architecture                    |
-| 1.3 | Floor layout generation   | A seed produces a connected, walkable floor                                       | Procedural generation, connectivity as an invariant                            |
-| 1.4 | Curated rooms             | Hand-authored room templates validated on load, placed by the generator           | Content as data, schema validation at the boundary                             |
-| 1.5 | Movement rules            | Legal moves advance the world; illegal ones return a typed rejection              | Result types over exceptions                                                   |
-| 1.6 | Combat and death          | Attacking, enemy turns, HP, and a run that can end                                | Turn ordering as pure state, not side effects                                  |
-| 1.7 | Determinism property test | Property test proves: same seed + same action sequence ⇒ identical world, always  | Property-based testing, and the invariant that justifies everything downstream |
+| #   | Item                      | Done when                                                                                                                                  | Teaches                                                                           |
+| --- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| 1.1 | Core types                | `WorldState`, `Action`, `ApplyResult` exist and make illegal states hard to build                                                          | Discriminated unions instead of booleans                                          |
+| 1.2 | Deterministic RNG         | Same (seed, cursor) always yields the same number; no ambient randomness anywhere                                                          | Why `Math.random()` would silently destroy the architecture                       |
+| 1.3 | Floor layout generation   | A seed produces a connected, walkable floor                                                                                                | Procedural generation, connectivity as an invariant                               |
+| 1.4 | Curated rooms             | Hand-authored room templates validated on load, placed by the generator                                                                    | Content as data, schema validation at the boundary                                |
+| 1.5 | Movement rules            | Legal moves advance the world; illegal ones return a typed rejection                                                                       | Result types over exceptions                                                      |
+| 1.6 | Combat and death          | Attacking, enemy turns, HP, and a run that can end                                                                                         | Turn ordering as pure state, not side effects                                     |
+| 1.7 | Determinism property test | Property test proves: same seed + same action sequence ⇒ identical world, always                                                           | Property-based testing, and the invariant that justifies everything downstream    |
+| 1.8 | Loot and descent rules    | One consumable item can be picked up and used; stairs descend to a generated floor at `depth + 1`; the 1.7 property covers the new actions | Extending a discriminated action union without breaking exhaustiveness (ADR 0002) |
 
-**1.7 is the keystone.** Until it passes, nothing downstream is trustworthy — and the three-app comparison is meaningless.
+**1.7 is the keystone.** Until it passes, nothing downstream is trustworthy — and the three-app comparison is meaningless. 1.8 lands after it on purpose: extending the action union is the first proof the property test keeps holding as rules grow.
 
 ## Milestone 2 — `packages/db` and the Next server
 
@@ -80,13 +81,14 @@ The part you want to get stronger at. Expect to go slower here, deliberately.
 
 ## Milestone 3 — `apps/next` client
 
-| #   | Item                | Done when                                                           | Teaches                                                                   |
-| --- | ------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| 3.1 | Dungeon page        | An RSC page loads a run and renders the three-column shell          | Server Components, and what never reaches the bundle                      |
-| 3.2 | The grid            | The floor renders as DOM nodes and reads clearly at a glance        | A game board without canvas; CSS Grid and custom properties               |
-| 3.3 | Optimistic movement | Your move lands in the same frame; a server rejection rolls it back | **The centerpiece.** `useOptimistic` with the rules engine as its reducer |
-| 3.4 | Keyboard control    | Keys move you; the listener subscribes once and never goes stale    | `useEffectEvent`, and the stale-closure bug it exists to kill             |
-| 3.5 | Rejection feedback  | A server rejection is visible and explains itself                   | Divergence as a first-class UI state                                      |
+| #   | Item                  | Done when                                                                                                                                      | Teaches                                                                   |
+| --- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| 3.1 | Dungeon page          | An RSC page loads a run and renders the three-column shell                                                                                     | Server Components, and what never reaches the bundle                      |
+| 3.2 | The grid              | The floor renders as DOM nodes and reads clearly at a glance                                                                                   | A game board without canvas; CSS Grid and custom properties               |
+| 3.3 | Optimistic movement   | Your move lands in the same frame; a server rejection rolls it back                                                                            | **The centerpiece.** `useOptimistic` with the rules engine as its reducer |
+| 3.4 | Keyboard control      | Keys move you; the listener subscribes once and never goes stale                                                                               | `useEffectEvent`, and the stale-closure bug it exists to kill             |
+| 3.5 | Rejection feedback    | A server rejection is visible and explains itself                                                                                              | Divergence as a first-class UI state                                      |
+| 3.6 | Inventory and descent | Using the consumable and taking the stairs go through the same optimistic pipeline as movement; the inventory panel renders in the left column | Reusing one action pipeline for every action type (ADR 0002)              |
 
 ## Milestone 4 — `apps/next` social layer
 
@@ -145,7 +147,7 @@ This is the actual portfolio artifact.
 
 ## Not in scope
 
-Multiple floors, character classes, equipment, skill trees, appraisal voting on traces, real-time multiplayer, sound. Revisit only once Milestone 8 is finished.
+Character classes, equipment beyond the single consumable, skill trees, appraisal voting on traces, GitHub account linking, real-time multiplayer, sound. Revisit only once Milestone 8 is finished. (Descending floors and minimal loot are **in** scope since the 2026-08-06 audit — ADR 0002.)
 
 ## Progress
 
@@ -169,5 +171,9 @@ Carried into later items (from `code-mentor`'s 0.1+0.2 review):
 - **0.4** — CI step order is semantic: `apps/next` typecheck only validates typed routes when `.next/types` exists, so typecheck-after-build checks more than typecheck-before. Decide the order on purpose. Add `.nvmrc` + pnpm `engineStrict`; know that `pnpm -r <script>` silently skips members lacking the script — a new package without `typecheck` stays unchecked while CI is green.
 - **2.2** — decide the unit/integration test seam before writing db tests: both will live in the `@deepdive/db` project, so `--project` filtering alone cannot separate them.
 - **5.2** — Vitest's default exclude covers only `node_modules` and `.git`: Playwright specs (and anything in `.next/`) match the default include pattern and would run as unit tests. Scope the excludes when e2e lands.
+
+**2026-08-06 — Project audit** (mid-0.3, before writing the boundary zones).
+
+Four spec↔roadmap contradictions found and resolved — decisions in `docs/decisions/0002-scope-audit.md`: descend is core (1.8, 3.6 added), minimal loot is in scope, the action transaction lives in a `packages/db` helper with `engine.apply` injected (so **db never imports engine** — the zone matrix 0.3 enforces), and unbuilt-feature columns (`github_id`, `appraisals`) are dropped from the 2.1 schema. Also fixed: stale pre-monorepo paths in `code-mentor`'s invariants, the roadmap intro's outdated "never writes" phrasing, and session working norms folded into the skill.
 
 Next item: **0.3 — Boundary rules**.

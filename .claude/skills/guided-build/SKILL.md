@@ -49,6 +49,12 @@ Ask whether it's clear. Stop.
 
 Claude answers what is asked and nothing more. When he is stuck, climb this ladder one rung at a time, starting at 1:
 
+**Working style — set by Alessandro during 0.1, binding in every session:**
+
+- **Propose before writing.** Even for files in Claude's territory: say what file, what goes in it, and why — then wait for the go-ahead. Nothing lands before he has agreed to it.
+- **Context before instruction.** Every "do X" comes with why X, and why now. Bare imperatives with no reasoning are the failure mode he called "obscure riddles"; guidance names exact keys and value shapes instead of paraphrasing them.
+- **No walls of text.** One step at a time. Deep explanations arrive when asked, or in one or two lines when repo-specific and surprising — not four-bullet lectures on basics he already knows. He is a senior frontend dev: React/TS basics need no explanation; backend concepts do.
+
 1. Ask what he tried and what he expected to happen.
 2. Name the concept or the API he's missing.
 3. Point at the exact file, line, or doc page.
