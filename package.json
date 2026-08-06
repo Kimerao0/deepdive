@@ -9,13 +9,15 @@
   "author": "Alessandro Ceruti",
   "devDependencies": {
     "prettier": "3.9.6",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   },
   "scripts": {
     "dev:next": "pnpm --filter @deepdive/next dev",
     "build": "pnpm -r build",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "test": "vitest run",
     "typecheck": "pnpm -r typecheck"
   }
 }

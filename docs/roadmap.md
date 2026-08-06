@@ -159,4 +159,15 @@ Carried into later items:
 - **0.4** — no Node version file. `engines.node` documents intent but nothing enforces it; `actions/setup-node` reads `.nvmrc` natively.
 - **3.4** — `reactCompiler` is configured but unproven. See the note under Milestone 0.
 
-Next item: **0.2 — Test runner**.
+**0.2 — Test runner — done (2026-08-06).**
+
+Vitest 4.1.10 from the root via `test.projects: ["packages/*", "apps/*"]` — projects are discovered by the same globs as workspace members and named after `package.json` names, so `--project @deepdive/engine` filtering works and Milestones 6–7's apps join with zero config edits. Tests colocate in `src/` as `*.test.ts` (inside each package's tsconfig `include`), explicit `vitest` imports, no globals. Verified green from root, red with exit 1 on a flipped assertion, and empty projects skip silently. `code-mentor` found the repo's first phantom dependency: the engine test imported `vitest` while only the root declared it — root `node_modules` is an ancestor directory, so **every root devDependency leaks into every package**; pnpm's strictness covers the virtual store only. Fixed by declaring `vitest: catalog:` in the engine. `allowJs` removed from `apps/next` tsconfig — build passes; it was never required.
+
+Carried into later items (from `code-mentor`'s 0.1+0.2 review):
+
+- **0.3** — turn on `import-x/no-extraneous-dependencies` (or equivalent) in the same commit as the boundary rules: phantom deps are a boundary violation the tsconfig cannot catch. The engine boundary rule must be file-glob scoped, not directory scoped — `src/index.test.ts` legitimately imports `vitest` from inside the engine.
+- **0.4** — CI step order is semantic: `apps/next` typecheck only validates typed routes when `.next/types` exists, so typecheck-after-build checks more than typecheck-before. Decide the order on purpose. Add `.nvmrc` + pnpm `engineStrict`; know that `pnpm -r <script>` silently skips members lacking the script — a new package without `typecheck` stays unchecked while CI is green.
+- **2.2** — decide the unit/integration test seam before writing db tests: both will live in the `@deepdive/db` project, so `--project` filtering alone cannot separate them.
+- **5.2** — Vitest's default exclude covers only `node_modules` and `.git`: Playwright specs (and anything in `.next/`) match the default include pattern and would run as unit tests. Scope the excludes when e2e lands.
+
+Next item: **0.3 — Boundary rules**.
