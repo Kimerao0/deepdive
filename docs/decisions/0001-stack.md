@@ -60,6 +60,15 @@ This is accepted deliberately and quarantined: the Next-specific surface stays c
 
 `experimental.ppr` is deprecated in Next 16; PPR arrives through top-level `cacheComponents`. Both `reactCompiler` and `cacheComponents` are **top-level** `NextConfig` keys, not under `experimental` — verified against `next@16.2.12` typings.
 
+### `reactCompiler` is client-only
+
+Established at 0.1 by reading `next/dist/build/get-babel-loader-config.js`: `getReactCompilerPlugins` returns `undefined` when `isServer`, so the React Compiler never touches Server Components. `babel-plugin-react-compiler` is an _optional_ peer of `next`, resolved by name from the app at build time — a missing install throws Next error `E78`, but only on a build that actually has a client bundle to compile.
+
+Two consequences for this project:
+
+- Auto-memoization applies to the client half only. At 3.3 the engine runs in both places; only the client copy is compiled. Any performance claim in 8.2 has to say which side it measured.
+- `cacheComponents` announces itself at build time (`- Cache Components enabled`); `reactCompiler` prints nothing. Confirmation is deferred to 3.4 — see the note under Milestone 0 in the roadmap.
+
 ## Rejected
 
 - **Fastify + React SPA as the only app** — would cut RSC, `use cache`, PPR and `use()` promise-passing, roughly 40% of the React surface the project exists to explore. Retained instead as `apps/react-router`, where RSC survives _and_ the HTTP layer is hand-written.

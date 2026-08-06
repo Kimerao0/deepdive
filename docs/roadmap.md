@@ -46,6 +46,8 @@ Deliverable: an empty monorepo that builds, lints, tests, and goes red in CI whe
 | 0.3 | Boundary rules            | A deliberate import from `engine/` into `db/` fails lint; so does `apps/*` importing another app                           | ESLint import boundaries — the rule that makes the three-app plan possible         |
 | 0.4 | CI                        | GitHub Actions runs typecheck, lint, test, build on PR; `main` protected                                                   | The green-bar contract you're committing to                                        |
 
+**Deferred check from 0.1 — `reactCompiler` is configured but unproven.** Read from `next@16.2.12` source: `getReactCompilerPlugins` returns early when `isServer`, so the React Compiler runs on the **client build only**. With zero client components, removing `babel-plugin-react-compiler` does not fail the build — the resolution path is never reached. The flag becomes falsifiable at **3.4**, the first `"use client"` component: remove the plugin there and the build must fail with Next error `E78`. Until then 0.1's "`reactCompiler` on" is a configuration claim, not a verified one.
+
 ## Milestone 1 — `packages/engine`
 
 Pure TypeScript. No React, no database, no I/O. The heart of the project, and the part worth being slow about. Shared by all three apps unchanged.
@@ -147,4 +149,14 @@ Multiple floors, character classes, equipment, skill trees, appraisal voting on 
 
 ## Progress
 
-Nothing built yet. Next item: **0.1 — pnpm workspace + Next app**.
+**0.1 — pnpm workspace + Next app — done (2026-08-05).**
+
+pnpm 11.18.0 workspace with four members: root, `packages/engine`, `packages/db`, `apps/next`. Packages export raw TypeScript through `exports` with no build step, and Next 16 compiles them from the symlink without `transpilePackages`. `tsconfig.base.json` carries `strict` plus seven extra flags and omits `DOM` from `lib`, so an engine that touches `document` fails typecheck — verified by deliberately breaking it. TypeScript pinned to 6.0.3, not 7.x, because `typescript-eslint@8.65` declares peer `>=4.8.4 <6.1.0` and 0.3 needs typed linting. Shared versions live in a pnpm catalog; single-consumer deps (`next`, `prettier`) are pinned directly. Prettier at `printWidth: 160`. Root scripts `dev:next`, `build`, `typecheck`, `format`, `format:check` are the names 0.4's CI will call — `dev` is per-app on purpose, since a recursive `dev` would boot three servers onto one port at Milestones 6 and 7.
+
+Carried into later items:
+
+- **0.2 / 0.3** — both package tsconfigs use `include: ["./src"]`, so files at a package root (`vitest.config.ts`, `eslint.config.js`) fall outside every TS project. Typed linting rejects files it cannot find in a project; solve it when those files arrive.
+- **0.4** — no Node version file. `engines.node` documents intent but nothing enforces it; `actions/setup-node` reads `.nvmrc` natively.
+- **3.4** — `reactCompiler` is configured but unproven. See the note under Milestone 0.
+
+Next item: **0.2 — Test runner**.

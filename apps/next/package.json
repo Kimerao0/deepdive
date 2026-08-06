@@ -3,17 +3,18 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@deepdive/db": "workspace:*",
+    "@deepdive/engine": "workspace:*",
     "next": "16.2.12",
     "react": "catalog:",
-    "react-dom": "catalog:",
-    "@deepdive/engine": "workspace:*",
-    "@deepdive/db": "workspace:*"
+    "react-dom": "catalog:"
   },
   "devDependencies": {
-    "typescript": "catalog:",
+    "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
-    "@types/node": "catalog:"
+    "babel-plugin-react-compiler": "1.0.0",
+    "typescript": "catalog:"
   },
   "scripts": {
     "dev": "next dev",

@@ -12,6 +12,8 @@
     "typescript": "catalog:"
   },
   "scripts": {
+    "dev:next": "pnpm --filter @deepdive/next dev",
+    "build": "pnpm -r build",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "pnpm -r typecheck"
