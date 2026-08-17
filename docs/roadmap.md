@@ -139,6 +139,7 @@ This is the actual portfolio artifact.
 
 | #   | Item          | Done when                                                                     | Teaches                             |
 | --- | ------------- | ----------------------------------------------------------------------------- | ----------------------------------- |
+| 8.0 | Extract `packages/ui` | Components duplicated across ≥2 apps move behind one `exports` surface; all three apps consume it; zero dungeon knowledge inside | A shared UI package as a real package boundary — the modern `frontend-common`, with `"use client"` surviving three bundlers |
 | 8.1 | Parity matrix | Documented proof all three implement the same features                        | Honest comparison discipline        |
 | 8.2 | Measurements  | Bundle size, TTFB, lines of code, and where each framework's complexity lives | Measuring instead of asserting      |
 | 8.3 | The writeup   | "Same game, three RSC implementations, here's what each costs you"            | The thing that gets read and shared |

@@ -4,6 +4,10 @@ packages:
 
 allowBuilds:
   sharp: false
+  # Denied like sharp: napi packages ship prebuilt binaries as optional deps;
+  # the build script is only the from-source fallback. Verified by the resolver
+  # falsification in 0.3 — if @deepdive/* resolves, the denial cost nothing.
+  unrs-resolver: false
 
 catalog:
   typescript: 6.0.3
