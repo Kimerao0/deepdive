@@ -190,4 +190,14 @@ Carried into later items:
 - **2.1** — `allowDefaultProject` globs are root-relative and `**` is forbidden in them, so package-level config files (first: `drizzle.config.ts` in `packages/db`) will fail with a project-service parse error. Add explicit single-star entries like `packages/*/*.config.ts` when they arrive.
 - **6.1 / 7.1** — falsify the app→app zone, add zones for the new apps.
 
-Next item: **0.4 — CI**.
+**0.4 — CI — done (2026-08-17).**
+
+One sequential GitHub Actions job on `pull_request` and pushes to `main`: install (`--frozen-lockfile`) → lint → test → build → typecheck. Every step calls a root script by name, so CI and local runs cannot diverge. Build runs **before** typecheck on purpose — `apps/next` typed routes only validate once `.next/types` exists (0.2 carry-in). A guard step fails if any workspace member lacks a `typecheck` script, closing the `pnpm -r` silent-skip hole; it's scoped to `typecheck` only, since members without `build` skip legitimately and `test` is discovered by root Vitest globs. Node version enforced, not documented: `.nvmrc` (read natively by `actions/setup-node`) + `engineStrict: true` in `pnpm-workspace.yaml` — the `.npmrc` `engine-strict` spelling only warns under pnpm 11; falsified both ways with a fake `>=99` requirement. Guard falsified locally (renaming db's `typecheck` → exit 1 naming the package). `main` protected via a ruleset requiring the `checks` job, with a repository-admin bypass as a deliberate, visible escape hatch (solo-repo option 2). Squash-merge as the merge method: one PR = one roadmap item = one commit on `main`.
+
+**Deferred verification** — the full gate falsification (a violating PR shows a red check *and* a blocked merge) hasn't been observed end-to-end; the first real red during Milestone 1 counts as the test. If Milestone 1 finishes without one, falsify deliberately before ticking 1.8.
+
+Carried into later items:
+
+- **2.2/2.4** — `pnpm build` in CI will need a stub `DATABASE_URL` (or equivalent) once the Next app touches the db at build time; the green won't stay free.
+
+Milestone 0 complete. Next item: **1.1 — Core types**.
