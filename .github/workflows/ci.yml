@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A superseded run on the same branch is wasted minutes: cancel it.
+# `github.ref` is unique per PR and per branch, so runs on different PRs never cancel each other.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Reads the pnpm version from package.json `packageManager` — pinned in exactly one place.
+      - uses: pnpm/action-setup@v6
+
+      # Reads .nvmrc — the same file nvm reads locally. `cache: pnpm` caches the pnpm store
+      # keyed on pnpm-lock.yaml, so unchanged lockfiles skip the network entirely.
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # --frozen-lockfile: CI installs exactly what the lockfile says or fails —
+      # a PR whose package.json and lockfile disagree must go red, not silently re-resolve.
+      - run: pnpm install --frozen-lockfile
+
+      # Every check calls a root script BY NAME (0.1's contract): CI and local runs
+      # can never diverge, because there is nothing here that isn't runnable locally.
+      - run: pnpm lint
+      - run: pnpm test
+
+      # Build BEFORE typecheck, deliberately (0.2 carry-in): apps/next typecheck only
+      # validates typed routes once `.next/types` exists. Swapping these checks less.
+      - run: pnpm build
+
+      # `pnpm -r typecheck` silently skips members lacking the script (0.2 carry-in) —
+      # a new package without it would stay unchecked forever while CI is green.
+      # This guard makes the omission itself a red build. Scoped to typecheck only:
+      # members without `build` skip legitimately (engine/db export raw TS), and
+      # `test` is discovered by Vitest globs at the root, not per-member scripts.
+      - name: every member declares typecheck
+        run: pnpm -r --include-workspace-root=false exec node -e "const p=require('./package.json'); if(!p.scripts?.typecheck){console.error(p.name+' has no typecheck script'); process.exit(1)}"
+
+      - run: pnpm typecheck
