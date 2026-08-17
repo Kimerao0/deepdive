@@ -2,6 +2,10 @@ packages:
   - apps/*
   - packages/*
 
+# Fail install when the running Node violates engines.node, instead of
+# failing mysteriously at runtime. Pairs with .nvmrc (0.4).
+engineStrict: true
+
 allowBuilds:
   sharp: false
   # Denied like sharp: napi packages ship prebuilt binaries as optional deps;

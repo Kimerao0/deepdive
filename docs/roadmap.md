@@ -177,4 +177,17 @@ Carried into later items (from `code-mentor`'s 0.1+0.2 review):
 
 Four spec↔roadmap contradictions found and resolved — decisions in `docs/decisions/0002-scope-audit.md`: descend is core (1.8, 3.6 added), minimal loot is in scope, the action transaction lives in a `packages/db` helper with `engine.apply` injected (so **db never imports engine** — the zone matrix 0.3 enforces), and unbuilt-feature columns (`github_id`, `appraisals`) are dropped from the 2.1 schema. Also fixed: stale pre-monorepo paths in `code-mentor`'s invariants, the roadmap intro's outdated "never writes" phrasing, and session working norms folded into the skill.
 
-Next item: **0.3 — Boundary rules**.
+**0.3 — Boundary rules — done (2026-08-17).**
+
+ESLint 10 flat config at the root: `typescript-eslint` recommended-type-checked, `eslint-plugin-import-x`, and the TS resolver (`eslint-import-resolver-typescript` — the default Node resolver can't follow `exports` maps or pnpm symlinks). The ADR 0002 zone matrix lives in `import-x/no-restricted-paths`: engine imports no other package, db never imports engine (`apply` arrives as a callback), packages never import apps, apps never import sibling apps. `import-x/no-extraneous-dependencies` landed in the same commit, glob-scoped so test and config files may use devDependencies — the 0.2 phantom-dep leak is now caught mechanically. `unrs-resolver`'s build script denied in `pnpm-workspace.yaml` (napi prebuilds suffice, same reasoning as sharp).
+
+Every rule was falsified green→red→green, not just observed green: (1) typo'd `@deepdive/enginee` → `no-unresolved`, proving the resolver is alive despite the build-script denial; (2) relative import of db from engine src → engine zone; (3) the realistic violation — `@deepdive/engine` declared in db's `package.json`, installed, imported: resolves and typechecks clean, only the zone goes red; (4) `import "prettier"` in engine src → phantom dep caught, while `vitest` in `index.test.ts` stays legal.
+
+**Not verified: the apps→apps zone.** Only one app exists; falsify it at **6.1** when `apps/react-router` lands (its own zone gets added there too, per the config comment).
+
+Carried into later items:
+
+- **2.1** — `allowDefaultProject` globs are root-relative and `**` is forbidden in them, so package-level config files (first: `drizzle.config.ts` in `packages/db`) will fail with a project-service parse error. Add explicit single-star entries like `packages/*/*.config.ts` when they arrive.
+- **6.1 / 7.1** — falsify the app→app zone, add zones for the new apps.
+
+Next item: **0.4 — CI**.
