@@ -23,3 +23,7 @@ export interface Coordinates {
 }
 
 export type Size = "small" | "medium" | "large" | "huge";
+
+export type RoomShape = "chaotic" | "organic" | "compact" | "blocky";
+
+export type FloorDensity = "sparse" | "normal" | "dense";
