@@ -1,4 +1,4 @@
-import { getNeighbors, getSurroundingCells, toKey } from "#coordinates/index";
+import { getSurroundingCells } from "#coordinates/index";
 import { generateRoom, type Room } from "#room/index";
 import type { Coordinates, FloorDensity, RoomShape, Size, TileSet } from "#dungeon/types";
 
@@ -27,7 +27,13 @@ const DENSITY_DIVISORS: Record<FloorDensity, number> = {
 const ROOM_SIZES: Size[] = ["small", "medium", "large", "huge"];
 const ROOM_SHAPES: RoomShape[] = ["chaotic", "organic", "compact", "blocky"];
 
-const MAX_ENTRY_ATTEMPTS = 50;
+// Internally the floor works on a numeric lattice of (gridSize + 2)² cells —
+// the grid plus a one-cell ring outside it — so the padding of edge rooms
+// stays representable and the hot BFS loops avoid string keys.
+const latticeWidth = (gridSize: number): number => gridSize + 2;
+const toIndex = ({ x, y }: Coordinates, width: number): number => x + 1 + (y + 1) * width;
+const toCell = (index: number, width: number): Coordinates => ({ x: (index % width) - 1, y: Math.floor(index / width) - 1 });
+const deltasOf = (width: number): number[] => [1, -1, width, -width];
 
 export const generateFloor = (size: Size, tileSet: TileSet, density: FloorDensity, entryCount: number): Floor => {
   if (entryCount < 1) {
@@ -35,28 +41,38 @@ export const generateFloor = (size: Size, tileSet: TileSet, density: FloorDensit
   }
 
   const gridSize = FLOOR_SIZES[size];
-  const placed = placeRooms(gridSize, tileSet, density);
-  const { rooms, roomKeys, corridors, corridorKeys } = connectRooms(placed, gridSize);
-  const entries = placeEntries(corridors, corridorKeys, roomKeys, gridSize, entryCount);
+  const width = latticeWidth(gridSize);
 
-  return { gridSize, rooms, corridors, entries };
+  const { placed, roomGrid } = placeRooms(gridSize, tileSet, density);
+  const { labels, mainLabel, mainCells } = labelFreePockets(roomGrid, placed, gridSize);
+  const { rooms, network } = connectRooms(placed, labels, mainLabel, gridSize);
+  const entries = placeEntries(network, mainCells, labels, mainLabel, gridSize, entryCount);
+
+  return {
+    gridSize,
+    rooms,
+    corridors: network.list.map((index) => toCell(index, width)),
+    entries: entries.map((index) => toCell(index, width)),
+  };
 };
 
 interface PlacedRoom {
   room: Room;
-  keys: Set<string>;
+  tileIndexes: Set<number>;
 }
 
 // Rooms grow from a random seed cell; everything already placed plus a one-cell
 // pad around it is handed to generateRoom as occupied, so rooms never touch.
 // A ring just outside the floor keeps growth inside the square.
-const placeRooms = (gridSize: number, tileSet: TileSet, density: FloorDensity): PlacedRoom[] => {
-  const blockedKeys = new Set<string>();
+const placeRooms = (gridSize: number, tileSet: TileSet, density: FloorDensity): { placed: PlacedRoom[]; roomGrid: Uint8Array } => {
+  const width = latticeWidth(gridSize);
+  const blockedGrid = new Uint8Array(width * width);
   const blockedList: Coordinates[] = [];
+  const roomGrid = new Uint8Array(width * width);
   const block = (cell: Coordinates) => {
-    const key = toKey(cell);
-    if (blockedKeys.has(key)) return;
-    blockedKeys.add(key);
+    const index = toIndex(cell, width);
+    if (blockedGrid[index]) return;
+    blockedGrid[index] = 1;
     blockedList.push(cell);
   };
 
@@ -72,139 +88,209 @@ const placeRooms = (gridSize: number, tileSet: TileSet, density: FloorDensity): 
 
   for (let attempt = 0; attempt < attempts; attempt++) {
     const seed = { x: randomInt(gridSize), y: randomInt(gridSize) };
-    if (blockedKeys.has(toKey(seed))) continue;
+    if (blockedGrid[toIndex(seed, width)]) continue;
 
     const room = generateRoom([seed], tileSet, pickRandom(ROOM_SIZES), pickRandom(ROOM_SHAPES), blockedList);
 
+    const tileIndexes = new Set<number>();
     for (const tile of room.tiles) {
+      tileIndexes.add(toIndex(tile.position, width));
+      roomGrid[toIndex(tile.position, width)] = 1;
       block(tile.position);
       for (const cell of getSurroundingCells(tile.position)) block(cell);
     }
 
-    placed.push({ room, keys: new Set(room.tiles.map((tile) => toKey(tile.position))) });
+    placed.push({ room, tileIndexes });
   }
 
-  return placed;
+  return { placed, roomGrid };
 };
 
-// Corridors form one network grown room by room: each room is reached by the
-// shortest path from the existing network, and the room tile where the path
-// lands becomes that room's entrance. A room no path can reach sits in a
-// pocket sealed by other rooms: it is dropped and its cells are freed.
-const connectRooms = (placed: PlacedRoom[], gridSize: number) => {
-  const roomKeys = new Set(placed.flatMap(({ keys }) => [...keys]));
-  const corridorKeys = new Set<string>();
-  const corridors: Coordinates[] = [];
-  const addCorridor = (cell: Coordinates) => {
-    const key = toKey(cell);
-    if (corridorKeys.has(key)) return;
-    corridorKeys.add(key);
-    corridors.push(cell);
-  };
+// Free cells fragment into pockets when rooms and walls seal regions off.
+// Label each pocket, then crown the one adjacent to the most rooms as the
+// floor's main area: corridors, entries, and surviving rooms all live there.
+const labelFreePockets = (roomGrid: Uint8Array, placed: PlacedRoom[], gridSize: number) => {
+  const width = latticeWidth(gridSize);
+  const deltas = deltasOf(width);
+  const labels = new Int32Array(width * width);
+  let nextLabel = 0;
 
-  const rooms: Room[] = [];
-  const [first, ...rest] = placed;
-  if (!first) throw new Error("A floor needs at least one room.");
+  for (let y = 0; y < gridSize; y++) {
+    for (let x = 0; x < gridSize; x++) {
+      const start = toIndex({ x, y }, width);
+      if (labels[start] !== 0 || roomGrid[start] === 1) continue;
 
-  // Bootstrap the network with the first room's doorstep: any free in-bounds
-  // cell next to one of its tiles.
-  let doorstep: { cell: Coordinates; doorKey: string } | undefined;
-  for (const tile of first.room.tiles) {
-    const free = getNeighbors(tile.position).find((cell) => isInBounds(cell, gridSize) && !roomKeys.has(toKey(cell)));
-    if (free) {
-      doorstep = { cell: free, doorKey: toKey(tile.position) };
-      break;
+      nextLabel += 1;
+      labels[start] = nextLabel;
+      const queue = [start];
+      for (let head = 0; head < queue.length; head++) {
+        for (const delta of deltas) {
+          const neighbor = queue[head]! + delta;
+          if (labels[neighbor] !== 0 || roomGrid[neighbor] === 1 || !isInsideGrid(neighbor, width)) continue;
+          labels[neighbor] = nextLabel;
+          queue.push(neighbor);
+        }
+      }
     }
   }
-  if (!doorstep) throw new Error("The first room has no free cell around it.");
 
-  addCorridor(doorstep.cell);
-  rooms.push(withDoor(first.room, doorstep.doorKey));
-
-  for (const { room, keys } of rest) {
-    const found = findCorridorPath(corridors, (cell) => getNeighbors(cell).some((neighbor) => keys.has(toKey(neighbor))), roomKeys, gridSize);
-
-    if (!found) {
-      for (const key of keys) roomKeys.delete(key);
-      continue;
+  const votes = new Map<number, number>();
+  for (const { tileIndexes } of placed) {
+    const seen = new Set<number>();
+    for (const index of tileIndexes) {
+      for (const delta of deltas) {
+        const label = labels[index + delta]!;
+        if (label !== 0) seen.add(label);
+      }
     }
-
-    for (const cell of found.path) addCorridor(cell);
-    const door = getNeighbors(found.landing).find((neighbor) => keys.has(toKey(neighbor)))!;
-    rooms.push(withDoor(room, toKey(door)));
+    for (const label of seen) votes.set(label, (votes.get(label) ?? 0) + 1);
   }
 
-  return { rooms, roomKeys, corridors, corridorKeys };
+  let mainLabel = 1;
+  let bestVotes = -1;
+  for (const [label, count] of votes) {
+    if (count > bestVotes) {
+      bestVotes = count;
+      mainLabel = label;
+    }
+  }
+
+  const mainCells: number[] = [];
+  for (let y = 0; y < gridSize; y++) {
+    for (let x = 0; x < gridSize; x++) {
+      const index = toIndex({ x, y }, width);
+      if (labels[index] === mainLabel) mainCells.push(index);
+    }
+  }
+
+  return { labels, mainLabel, mainCells };
 };
 
-// Entries are random free cells wired into the network by a corridor path, so
-// an entry always sits on a corridor tile. A cell in a sealed pocket is
-// unreachable: re-roll, and after too many misses reuse a network tile.
-const placeEntries = (corridors: Coordinates[], corridorKeys: Set<string>, roomKeys: Set<string>, gridSize: number, entryCount: number): Coordinates[] => {
-  const entries: Coordinates[] = [];
-  const entryKeys = new Set<string>();
-  const addCorridor = (cell: Coordinates) => {
-    const key = toKey(cell);
-    if (corridorKeys.has(key)) return;
-    corridorKeys.add(key);
-    corridors.push(cell);
+interface CorridorNetwork {
+  grid: Uint8Array;
+  list: number[];
+}
+
+const addToNetwork = (network: CorridorNetwork, index: number) => {
+  if (network.grid[index]) return;
+  network.grid[index] = 1;
+  network.list.push(index);
+};
+
+// Corridors form one network grown room by room inside the main area: each
+// room is reached by the shortest path from the existing network, and the
+// room tile where the path lands becomes that room's entrance. A room with
+// no cell on the main area is sealed inside another pocket: it is dropped.
+const connectRooms = (placed: PlacedRoom[], labels: Int32Array, mainLabel: number, gridSize: number) => {
+  const width = latticeWidth(gridSize);
+  const deltas = deltasOf(width);
+  const touchesMain = (tileIndexes: Set<number>): boolean => {
+    for (const index of tileIndexes) {
+      for (const delta of deltas) {
+        if (labels[index + delta] === mainLabel) return true;
+      }
+    }
+    return false;
   };
+
+  const survivors = placed.filter(({ tileIndexes }) => touchesMain(tileIndexes));
+  const [first, ...rest] = survivors;
+  if (!first) throw new Error("A floor needs at least one room next to its main area.");
+
+  const network: CorridorNetwork = { grid: new Uint8Array(width * width), list: [] };
+
+  // Bootstrap the network with the first room's doorstep: its first tile
+  // border cell that sits on the main area.
+  let doorstep = -1;
+  let firstDoor = -1;
+  for (const index of first.tileIndexes) {
+    for (const delta of deltas) {
+      if (labels[index + delta] === mainLabel) {
+        doorstep = index + delta;
+        firstDoor = index;
+        break;
+      }
+    }
+    if (doorstep !== -1) break;
+  }
+  addToNetwork(network, doorstep);
+
+  const rooms: Room[] = [withDoor(first.room, firstDoor, width)];
+
+  for (const { room, tileIndexes } of rest) {
+    const isNextToRoom = (index: number): boolean => deltas.some((delta) => tileIndexes.has(index + delta));
+    const found = findNetworkPath(network.list, isNextToRoom, labels, mainLabel, gridSize);
+    if (!found) throw new Error("A room touching the main area must be reachable from the network.");
+
+    for (const index of found.path) addToNetwork(network, index);
+    const door = deltas.map((delta) => found.landing + delta).find((index) => tileIndexes.has(index))!;
+    rooms.push(withDoor(room, door, width));
+  }
+
+  return { rooms, network };
+};
+
+// Entries are random cells of the main area wired into the network by a
+// corridor path, so an entry always sits on a corridor tile and every entry
+// and room stays mutually reachable.
+const placeEntries = (network: CorridorNetwork, mainCells: number[], labels: Int32Array, mainLabel: number, gridSize: number, entryCount: number): number[] => {
+  if (mainCells.length < entryCount) {
+    throw new Error("Not enough free space to place all floor entries.");
+  }
+
+  const entries: number[] = [];
+  const taken = new Set<number>();
 
   for (let i = 0; i < entryCount; i++) {
-    let entry: Coordinates | undefined;
-
-    for (let attempt = 0; attempt < MAX_ENTRY_ATTEMPTS && !entry; attempt++) {
-      const cell = { x: randomInt(gridSize), y: randomInt(gridSize) };
-      const key = toKey(cell);
-      if (roomKeys.has(key) || entryKeys.has(key)) continue;
-
-      const found = findCorridorPath(corridors, (candidate) => toKey(candidate) === key, roomKeys, gridSize);
-      if (!found) continue;
-
-      for (const pathCell of found.path) addCorridor(pathCell);
-      entry = cell;
+    let entry = -1;
+    while (entry === -1) {
+      const candidate = mainCells[randomInt(mainCells.length)]!;
+      if (!taken.has(candidate)) entry = candidate;
     }
 
-    if (!entry) {
-      entry = corridors.find((cell) => !entryKeys.has(toKey(cell)));
-      if (!entry) throw new Error("Not enough corridor space to place all floor entries.");
-    }
+    const found = findNetworkPath(network.list, (index) => index === entry, labels, mainLabel, gridSize);
+    if (!found) throw new Error("An entry on the main area must be reachable from the network.");
 
-    entryKeys.add(toKey(entry));
+    for (const index of found.path) addToNetwork(network, index);
+    taken.add(entry);
     entries.push(entry);
   }
 
   return entries;
 };
 
-// BFS from the whole network at once over non-room, in-bounds cells; returns
-// the landing (the first matching cell, which may be a seed) and the shortest
-// path to it (seeds excluded), or null if unreachable.
-const findCorridorPath = (seeds: Coordinates[], isTarget: (cell: Coordinates) => boolean, roomKeys: Set<string>, gridSize: number): { path: Coordinates[]; landing: Coordinates } | null => {
-  const cameFrom = new Map<string, Coordinates | null>();
-  const queue: Coordinates[] = [];
-  for (const cell of seeds) {
-    cameFrom.set(toKey(cell), null);
-    queue.push(cell);
+// BFS from the whole network at once across the main area; parents are
+// tracked per cell (-1 unvisited, -2 seed) to rebuild the shortest path.
+// Returns the landing (the first matching cell, which may be a seed) and the
+// path to it (seeds excluded, landing included), or null if unreachable.
+const findNetworkPath = (seeds: number[], isTarget: (index: number) => boolean, labels: Int32Array, mainLabel: number, gridSize: number): { path: number[]; landing: number } | null => {
+  const width = latticeWidth(gridSize);
+  const deltas = deltasOf(width);
+  const parents = new Int32Array(width * width).fill(-1);
+  const queue: number[] = [];
+
+  for (const seed of seeds) {
+    parents[seed] = -2;
+    queue.push(seed);
   }
 
   for (let head = 0; head < queue.length; head++) {
     const current = queue[head]!;
 
     if (isTarget(current)) {
-      const path: Coordinates[] = [];
-      let step: Coordinates | null = current;
-      while (step !== null) {
+      const path: number[] = [];
+      let step = current;
+      while (parents[step] !== -2) {
         path.push(step);
-        step = cameFrom.get(toKey(step)) ?? null;
+        step = parents[step]!;
       }
-      return { path: path.reverse().slice(1), landing: current };
+      return { path: path.reverse(), landing: current };
     }
 
-    for (const neighbor of getNeighbors(current)) {
-      const key = toKey(neighbor);
-      if (cameFrom.has(key) || roomKeys.has(key) || !isInBounds(neighbor, gridSize)) continue;
-      cameFrom.set(key, current);
+    for (const delta of deltas) {
+      const neighbor = current + delta;
+      if (parents[neighbor] !== -1 || labels[neighbor] !== mainLabel) continue;
+      parents[neighbor] = current;
       queue.push(neighbor);
     }
   }
@@ -214,12 +300,16 @@ const findCorridorPath = (seeds: Coordinates[], isTarget: (cell: Coordinates) =>
 
 // On a floor, a room's entrance is the tile its corridor lands on — the seed
 // used during generation loses the flag.
-const withDoor = (room: Room, doorKey: string): Room => ({
+const withDoor = (room: Room, doorIndex: number, width: number): Room => ({
   tileSet: room.tileSet,
-  tiles: room.tiles.map((tile) => ({ position: tile.position, isEntrance: toKey(tile.position) === doorKey })),
+  tiles: room.tiles.map((tile) => ({ position: tile.position, isEntrance: toIndex(tile.position, width) === doorIndex })),
 });
 
-const isInBounds = ({ x, y }: Coordinates, gridSize: number): boolean => x >= 0 && x < gridSize && y >= 0 && y < gridSize;
+const isInsideGrid = (index: number, width: number): boolean => {
+  const x = index % width;
+  const y = Math.floor(index / width);
+  return x > 0 && x < width - 1 && y > 0 && y < width - 1;
+};
 
 const randomInt = (max: number): number => Math.floor(Math.random() * max);
 
