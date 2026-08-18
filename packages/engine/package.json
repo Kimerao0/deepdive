@@ -5,6 +5,9 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "imports": {
+    "#*": "./src/*"
+  },
   "devDependencies": {
     "typescript": "catalog:",
     "vitest": "catalog:"

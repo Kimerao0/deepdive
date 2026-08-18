@@ -85,4 +85,18 @@ export default defineConfig(
       ],
     },
   },
+
+  // Inside the engine every internal import goes through the #-subpath map
+  // declared in its package.json; relative specifiers are forbidden.
+  {
+    files: ["packages/engine/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [{ regex: "^\\.\\.?/", message: "Use #-imports inside the engine." }],
+        },
+      ],
+    },
+  },
 );

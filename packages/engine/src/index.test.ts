@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { engine } from "./index.js";
+import { engine } from "#index.js";
 
 describe("Engine", () => {
   it("should test engine value", () => {
