@@ -52,18 +52,20 @@ Deliverable: an empty monorepo that builds, lints, tests, and goes red in CI whe
 
 Pure TypeScript. No React, no database, no I/O. The heart of the project, and the part worth being slow about. Shared by all three apps unchanged.
 
+Every item is a PR-sized, fully developed slice (working norm, 2026-08-17): types and functions are written at first use, lint is green without exceptions, tests pin behavior.
+
 | #   | Item                      | Done when                                                                                                                                  | Teaches                                                                           |
 | --- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
-| 1.1 | Core types                | `WorldState`, `Action`, `ApplyResult` exist and make illegal states hard to build                                                          | Discriminated unions instead of booleans                                          |
-| 1.2 | Deterministic RNG         | Same (seed, cursor) always yields the same number; no ambient randomness anywhere                                                          | Why `Math.random()` would silently destroy the architecture                       |
-| 1.3 | Floor layout generation   | A seed produces a connected, walkable floor                                                                                                | Procedural generation, connectivity as an invariant                               |
-| 1.4 | Curated rooms             | Hand-authored room templates validated on load, placed by the generator                                                                    | Content as data, schema validation at the boundary                                |
-| 1.5 | Movement rules            | Legal moves advance the world; illegal ones return a typed rejection                                                                       | Result types over exceptions                                                      |
-| 1.6 | Combat and death          | Attacking, enemy turns, HP, and a run that can end                                                                                         | Turn ordering as pure state, not side effects                                     |
-| 1.7 | Determinism property test | Property test proves: same seed + same action sequence ⇒ identical world, always                                                           | Property-based testing, and the invariant that justifies everything downstream    |
-| 1.8 | Loot and descent rules    | One consumable item can be picked up and used; stairs descend to a generated floor at `depth + 1`; the 1.7 property covers the new actions | Extending a discriminated action union without breaking exhaustiveness (ADR 0002) |
+| 1.1 | Deterministic generation  | A seed produces a connected, walkable floor; same seed ⇒ same floor, always; no ambient randomness anywhere                                | Seeded RNG, procedural generation, connectivity as an invariant                   |
+| 1.2 | Movement                  | `apply(world, action)` exists; legal moves advance the world, illegal ones return a typed rejection code                                   | Discriminated unions instead of booleans, result types over exceptions            |
+| 1.3 | Curated rooms             | Hand-authored room templates validated on load, placed by the generator                                                                    | Content as data, schema validation at the boundary                                |
+| 1.4 | Combat and death          | Attacking, enemy turns, HP, and a run that can end                                                                                         | Turn ordering as pure state, not side effects                                     |
+| 1.5 | Determinism property test | Property test proves: same seed + same action sequence ⇒ identical world, always                                                           | Property-based testing, and the invariant that justifies everything downstream    |
+| 1.6 | Loot and descent rules    | One consumable item can be picked up and used; stairs descend to a generated floor at `depth + 1`; the 1.5 property covers the new actions | Extending a discriminated action union without breaking exhaustiveness (ADR 0002) |
 
-**1.7 is the keystone.** Until it passes, nothing downstream is trustworthy — and the three-app comparison is meaningless. 1.8 lands after it on purpose: extending the action union is the first proof the property test keeps holding as rules grow.
+**1.5 is the keystone.** Until it passes, nothing downstream is trustworthy — and the three-app comparison is meaningless. 1.6 lands after it on purpose: extending the action union is the first proof the property test keeps holding as rules grow.
+
+Contract decisions made 2026-08-17 (implemented by each item at first use, never up front): `apply` results are a two-shape discriminated union (`ok: true` with the world / `ok: false` with the reason), never one object with optionals; brands on `Seed`, `EntityId`, `Seq` only; rejection reasons are a closed union of codes, human wording lives in the UI layer; `WorldState` is plain JSON-safe data all the way down — it crosses the Server Action boundary and lands in a JSONB column unchanged.
 
 ## Milestone 2 — `packages/db` and the Next server
 
@@ -194,10 +196,14 @@ Carried into later items:
 
 One sequential GitHub Actions job on `pull_request` and pushes to `main`: install (`--frozen-lockfile`) → lint → test → build → typecheck. Every step calls a root script by name, so CI and local runs cannot diverge. Build runs **before** typecheck on purpose — `apps/next` typed routes only validate once `.next/types` exists (0.2 carry-in). A guard step fails if any workspace member lacks a `typecheck` script, closing the `pnpm -r` silent-skip hole; it's scoped to `typecheck` only, since members without `build` skip legitimately and `test` is discovered by root Vitest globs. Node version enforced, not documented: `.nvmrc` (read natively by `actions/setup-node`) + `engineStrict: true` in `pnpm-workspace.yaml` — the `.npmrc` `engine-strict` spelling only warns under pnpm 11; falsified both ways with a fake `>=99` requirement. Guard falsified locally (renaming db's `typecheck` → exit 1 naming the package). `main` protected via a ruleset requiring the `checks` job, with a repository-admin bypass as a deliberate, visible escape hatch (solo-repo option 2). Squash-merge as the merge method: one PR = one roadmap item = one commit on `main`.
 
-**Deferred verification** — the full gate falsification (a violating PR shows a red check *and* a blocked merge) hasn't been observed end-to-end; the first real red during Milestone 1 counts as the test. If Milestone 1 finishes without one, falsify deliberately before ticking 1.8.
+**Deferred verification** — the full gate falsification (a violating PR shows a red check *and* a blocked merge) hasn't been observed end-to-end; the first real red during Milestone 1 counts as the test. If Milestone 1 finishes without one, falsify deliberately before ticking 1.6.
 
 Carried into later items:
 
 - **2.2/2.4** — `pnpm build` in CI will need a stub `DATABASE_URL` (or equivalent) once the Next app touches the db at build time; the green won't stay free.
 
-Milestone 0 complete. Next item: **1.1 — Core types**.
+Milestone 0 complete.
+
+**2026-08-17 — Milestone 1 restructured into PR-sized blocks.** The original 1.1 "Core types" dissolved after its deliverable unraveled under the working norms: a types-only item is code without a consumer. Its four contract decisions are recorded above the milestone table; declarations land with their first consumer. Old 1.1–1.3 → new 1.1, old 1.5 → new 1.2, old 1.4/1.6/1.7/1.8 → new 1.3/1.4/1.5/1.6.
+
+Next item: **1.1 — Deterministic generation**.
