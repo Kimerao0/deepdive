@@ -1,3 +1,9 @@
 {
-  "typescript.preferences.importModuleSpecifier": "non-relative"
+  "typescript.preferences.importModuleSpecifier": "non-relative",
+
+  // A package's own barrel is never the right auto-import: internal modules
+  // must import from the source module. Settings are workspace-wide, so this
+  // covers `#index` only — the apps legitimately import `@deepdive/*` barrels,
+  // and lint catches a package importing its own. See eslint.config.js.
+  "typescript.preferences.autoImportSpecifierExcludeRegexes": ["^#index$"]
 }

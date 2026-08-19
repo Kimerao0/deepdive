@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { generateRoom } from "#room/index";
-import type { Coordinates, RoomShape } from "#dungeon/types";
+import { generateRoom } from "#dungeon/room/index";
+import type { RoomShape } from "#dungeon/types";
+import type { Coordinates } from "#coordinates/index";
 
 const SHAPES: RoomShape[] = ["chaotic", "organic", "compact", "blocky"];
 

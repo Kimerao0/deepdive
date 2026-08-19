@@ -1,6 +1,6 @@
-import { getSurroundingCells } from "#coordinates/index";
-import { generateRoom, type Room } from "#room/index";
-import type { Coordinates, FloorDensity, RoomShape, Size, TileSet } from "#dungeon/types";
+import { getSurroundingCells, type Coordinates } from "#coordinates/index";
+import { generateRoom, type Room } from "#dungeon/room/index";
+import type { FloorDensity, RoomShape, Size, TileSet } from "#dungeon/types";
 
 export interface Floor {
   gridSize: number;
@@ -8,6 +8,13 @@ export interface Floor {
   corridors: Coordinates[];
   entries: Coordinates[];
 }
+
+// A floor is walkable on its room tiles and its corridors. Entries need no
+// check of their own: every entry sits on a corridor cell by construction.
+export const isWalkable = (floor: Floor, { x, y }: Coordinates): boolean => {
+  if (floor.corridors.some((cell) => cell.x === x && cell.y === y)) return true;
+  return floor.rooms.some((room) => room.tiles.some(({ position }) => position.x === x && position.y === y));
+};
 
 const FLOOR_SIZES: Record<Size, number> = {
   small: 50,
@@ -320,7 +327,16 @@ const entryCandidates = (roomGrid: Uint8Array, labels: Int32Array, mainLabel: nu
 // Entries are random room-hugging cells wired into the network by a corridor
 // path, so an entry always sits on a corridor tile next to a room and every
 // entry and room stays mutually reachable.
-const placeEntries = (network: CorridorNetwork, roomGrid: Uint8Array, mainCells: number[], labels: Int32Array, mainLabel: number, gridSize: number, entryCount: number, terrain: Uint8Array): number[] => {
+const placeEntries = (
+  network: CorridorNetwork,
+  roomGrid: Uint8Array,
+  mainCells: number[],
+  labels: Int32Array,
+  mainLabel: number,
+  gridSize: number,
+  entryCount: number,
+  terrain: Uint8Array,
+): number[] => {
   if (mainCells.length < entryCount) {
     throw new Error("Not enough free space to place all floor entries.");
   }
@@ -358,7 +374,15 @@ const placeEntries = (network: CorridorNetwork, roomGrid: Uint8Array, mainCells:
 // settled cell matching the target, which may be a seed), the origin (the
 // seed the winning path started from), and the path between them (seeds
 // excluded, landing included), or null if unreachable.
-const findNetworkPath = (seeds: number[], isTarget: (index: number) => boolean, labels: Int32Array, mainLabel: number, gridSize: number, terrain: Uint8Array, networkGrid: Uint8Array): { path: number[]; landing: number; origin: number } | null => {
+const findNetworkPath = (
+  seeds: number[],
+  isTarget: (index: number) => boolean,
+  labels: Int32Array,
+  mainLabel: number,
+  gridSize: number,
+  terrain: Uint8Array,
+  networkGrid: Uint8Array,
+): { path: number[]; landing: number; origin: number } | null => {
   const width = latticeWidth(gridSize);
   const deltas = deltasOf(width);
   const parents = new Int32Array(width * width).fill(-1);

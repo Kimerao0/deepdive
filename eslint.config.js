@@ -4,6 +4,12 @@ import { createTypeScriptImportResolver } from "eslint-import-resolver-typescrip
 import { flatConfigs as importX } from "eslint-plugin-import-x";
 import { config as defineConfig, configs as tsConfigs } from "typescript-eslint";
 
+const NO_RELATIVE_IMPORTS = { regex: "^\\.\\.?/", message: "Use #-imports inside the engine." };
+const NO_OWN_BARREL_IMPORTS = {
+  regex: "^(#index|@deepdive/engine)$",
+  message: "Import from the source module that defines it, not the engine's own barrel.",
+};
+
 export default defineConfig(
   // Never linted: build output and Next's generated ambient types.
   { ignores: ["**/.next/**", "**/next-env.d.ts"] },
@@ -87,16 +93,20 @@ export default defineConfig(
   },
 
   // Inside the engine every internal import goes through the #-subpath map
-  // declared in its package.json; relative specifiers are forbidden.
+  // declared in its package.json; relative specifiers are forbidden, and so is
+  // reaching for the engine's own barrel instead of the defining module.
   {
     files: ["packages/engine/**"],
     rules: {
-      "no-restricted-imports": [
-        "error",
-        {
-          patterns: [{ regex: "^\\.\\.?/", message: "Use #-imports inside the engine." }],
-        },
-      ],
+      "no-restricted-imports": ["error", { patterns: [NO_RELATIVE_IMPORTS, NO_OWN_BARREL_IMPORTS] }],
+    },
+  },
+
+  // The barrel's own test is the one file that must import the barrel.
+  {
+    files: ["packages/engine/src/index.test.ts"],
+    rules: {
+      "no-restricted-imports": ["error", { patterns: [NO_RELATIVE_IMPORTS] }],
     },
   },
 );

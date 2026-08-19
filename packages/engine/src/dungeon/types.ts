@@ -17,11 +17,6 @@ export type TileSet =
   | "sewer"
   | "mine";
 
-export interface Coordinates {
-  x: number;
-  y: number;
-}
-
 export type Size = "small" | "medium" | "large" | "huge";
 
 export type RoomShape = "chaotic" | "organic" | "compact" | "blocky";

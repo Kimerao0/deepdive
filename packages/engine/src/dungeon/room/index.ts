@@ -1,5 +1,5 @@
-import { getNeighbors, toKey } from "#coordinates/index";
-import type { Coordinates, RoomShape, Size, TileSet } from "#dungeon/types";
+import { getNeighbors, toKey, type Coordinates } from "#coordinates/index";
+import type { RoomShape, Size, TileSet } from "#dungeon/types";
 
 export interface Tile {
   position: Coordinates;

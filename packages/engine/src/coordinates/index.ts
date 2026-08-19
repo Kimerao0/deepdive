@@ -1,4 +1,7 @@
-import type { Coordinates } from "#dungeon/types";
+export interface Coordinates {
+  x: number;
+  y: number;
+}
 
 export const toKey = ({ x, y }: Coordinates): string => `${x},${y}`;
 

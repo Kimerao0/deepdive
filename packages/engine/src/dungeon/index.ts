@@ -1,4 +1,4 @@
-import { generateFloor, type Floor } from "#floor/index";
+import { generateFloor, type Floor } from "#dungeon/floor/index";
 import type { Difficulty, FloorDensity, Size, TileSet } from "#dungeon/types";
 
 // Points at one entry of one floor: indices into dungeon.levels[level][floor].entries[entry].

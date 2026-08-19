@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { getNeighbors, toKey } from "#coordinates/index";
-import { generateFloor } from "#floor/index";
-import type { Coordinates, FloorDensity, Size } from "#dungeon/types";
+import { getNeighbors, toKey, type Coordinates } from "#coordinates/index";
+import { generateFloor } from "#dungeon/floor/index";
+import type { FloorDensity, Size } from "#dungeon/types";
 
 const isConnected = (positions: Coordinates[]): boolean => {
   const keys = new Set(positions.map(toKey));
