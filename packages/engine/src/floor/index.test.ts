@@ -79,7 +79,7 @@ describe("generateFloor", () => {
     }
   });
 
-  it("should give every room exactly one entrance, adjacent to a corridor", () => {
+  it("should give every room at least one door, each adjacent to a corridor", () => {
     for (let run = 0; run < 5; run++) {
       const floor = generateFloor("medium", "castle", "normal", 1);
       const corridorKeys = new Set(floor.corridors.map(toKey));
@@ -87,10 +87,21 @@ describe("generateFloor", () => {
       expect(floor.rooms.length).toBeGreaterThanOrEqual(1);
       for (const room of floor.rooms) {
         const doors = room.tiles.filter((tile) => tile.isEntrance);
-        expect(doors.length).toBe(1);
-        expect(getNeighbors(doors[0]!.position).some((neighbor) => corridorKeys.has(toKey(neighbor)))).toBe(true);
+        expect(doors.length).toBeGreaterThanOrEqual(1);
+        for (const door of doors) {
+          expect(getNeighbors(door.position).some((neighbor) => corridorKeys.has(toKey(neighbor)))).toBe(true);
+        }
       }
     }
+  });
+
+  it("should route some connections through rooms, giving them multiple doors", () => {
+    let multiDoorRooms = 0;
+    for (let run = 0; run < 5; run++) {
+      const floor = generateFloor("medium", "castle", "dense", 1);
+      multiDoorRooms += floor.rooms.filter((room) => room.tiles.filter((tile) => tile.isEntrance).length >= 2).length;
+    }
+    expect(multiDoorRooms).toBeGreaterThanOrEqual(1);
   });
 
   it("should connect the whole floor into a single component", () => {

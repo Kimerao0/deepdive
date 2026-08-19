@@ -45,8 +45,9 @@ export const generateFloor = (size: Size, tileSet: TileSet, density: FloorDensit
 
   const { placed, roomGrid } = placeRooms(gridSize, tileSet, density);
   const { labels, mainLabel, mainCells } = labelFreePockets(roomGrid, placed, gridSize);
-  const { rooms, network } = connectRooms(placed, labels, mainLabel, gridSize);
-  const entries = placeEntries(network, roomGrid, mainCells, labels, mainLabel, gridSize, entryCount);
+  const terrain = randomTerrain(gridSize);
+  const { rooms, network } = connectRooms(placed, labels, mainLabel, gridSize, terrain);
+  const entries = placeEntries(network, roomGrid, mainCells, labels, mainLabel, gridSize, entryCount, terrain);
 
   return {
     gridSize,
@@ -60,6 +61,20 @@ interface PlacedRoom {
   room: Room;
   tileIndexes: Set<number>;
 }
+
+// Corridor paths follow a per-floor random cost field instead of pure
+// distance, so they wander instead of running dead straight. A wider spread
+// means more wandering; 1 would restore straight shortest paths.
+const TERRAIN_COST_SPREAD = 4;
+
+const randomTerrain = (gridSize: number): Uint8Array => {
+  const width = latticeWidth(gridSize);
+  const terrain = new Uint8Array(width * width);
+  for (let i = 0; i < terrain.length; i++) {
+    terrain[i] = 1 + randomInt(TERRAIN_COST_SPREAD);
+  }
+  return terrain;
+};
 
 // Rooms grow from a random seed cell; everything already placed plus a one-cell
 // pad around it is handed to generateRoom as occupied, so rooms never touch.
@@ -177,11 +192,17 @@ const addToNetwork = (network: CorridorNetwork, index: number) => {
   network.list.push(index);
 };
 
+// How often a new room's connection starts from inside an already-connected
+// room instead of from the corridor network: that room gains a second door,
+// and everything past it can only be reached by crossing the room.
+const THROUGH_ROOM_CHANCE = 0.35;
+
 // Corridors form one network grown room by room inside the main area: each
-// room is reached by the shortest path from the existing network, and the
-// room tile where the path lands becomes that room's entrance. A room with
-// no cell on the main area is sealed inside another pocket: it is dropped.
-const connectRooms = (placed: PlacedRoom[], labels: Int32Array, mainLabel: number, gridSize: number) => {
+// room is reached by the shortest path from the existing network — or, at
+// THROUGH_ROOM_CHANCE, from the edge of a connected room — and the room tiles
+// where the path starts and lands become doors. A room with no cell on the
+// main area is sealed inside another pocket: it is dropped.
+const connectRooms = (placed: PlacedRoom[], labels: Int32Array, mainLabel: number, gridSize: number, terrain: Uint8Array) => {
   const width = latticeWidth(gridSize);
   const deltas = deltasOf(width);
   const touchesMain = (tileIndexes: Set<number>): boolean => {
@@ -215,18 +236,45 @@ const connectRooms = (placed: PlacedRoom[], labels: Int32Array, mainLabel: numbe
   }
   addToNetwork(network, doorstep);
 
-  const rooms: Room[] = [withDoor(first.room, firstDoor, width)];
+  const doors = new Map<PlacedRoom, Set<number>>([[first, new Set([firstDoor])]]);
+  const connected: PlacedRoom[] = [first];
 
-  for (const { room, tileIndexes } of rest) {
+  for (const placedRoom of rest) {
+    const { tileIndexes } = placedRoom;
     const isNextToRoom = (index: number): boolean => deltas.some((delta) => tileIndexes.has(index + delta));
-    const found = findNetworkPath(network.list, isNextToRoom, labels, mainLabel, gridSize);
+
+    // Sometimes leave from inside a connected room instead of the network.
+    let seeds = network.list;
+    let throughRoom: PlacedRoom | undefined;
+    if (Math.random() < THROUGH_ROOM_CHANCE) {
+      const candidate = pickRandom(connected);
+      const edge: number[] = [];
+      for (const index of candidate.tileIndexes) {
+        for (const delta of deltas) {
+          if (labels[index + delta] === mainLabel) edge.push(index + delta);
+        }
+      }
+      if (edge.length > 0) {
+        seeds = edge;
+        throughRoom = candidate;
+      }
+    }
+
+    const found = findNetworkPath(seeds, isNextToRoom, labels, mainLabel, gridSize, terrain, network.grid);
     if (!found) throw new Error("A room touching the main area must be reachable from the network.");
 
+    if (throughRoom) {
+      addToNetwork(network, found.origin);
+      const exitDoor = deltas.map((delta) => found.origin + delta).find((index) => throughRoom.tileIndexes.has(index))!;
+      doors.get(throughRoom)!.add(exitDoor);
+    }
     for (const index of found.path) addToNetwork(network, index);
     const door = deltas.map((delta) => found.landing + delta).find((index) => tileIndexes.has(index))!;
-    rooms.push(withDoor(room, door, width));
+    doors.set(placedRoom, new Set([door]));
+    connected.push(placedRoom);
   }
 
+  const rooms = connected.map((placedRoom) => withDoors(placedRoom.room, doors.get(placedRoom)!, width));
   return { rooms, network };
 };
 
@@ -272,7 +320,7 @@ const entryCandidates = (roomGrid: Uint8Array, labels: Int32Array, mainLabel: nu
 // Entries are random room-hugging cells wired into the network by a corridor
 // path, so an entry always sits on a corridor tile next to a room and every
 // entry and room stays mutually reachable.
-const placeEntries = (network: CorridorNetwork, roomGrid: Uint8Array, mainCells: number[], labels: Int32Array, mainLabel: number, gridSize: number, entryCount: number): number[] => {
+const placeEntries = (network: CorridorNetwork, roomGrid: Uint8Array, mainCells: number[], labels: Int32Array, mainLabel: number, gridSize: number, entryCount: number, terrain: Uint8Array): number[] => {
   if (mainCells.length < entryCount) {
     throw new Error("Not enough free space to place all floor entries.");
   }
@@ -290,7 +338,7 @@ const placeEntries = (network: CorridorNetwork, roomGrid: Uint8Array, mainCells:
       if (!taken.has(candidate)) entry = candidate;
     }
 
-    const found = findNetworkPath(network.list, (index) => index === entry, labels, mainLabel, gridSize);
+    const found = findNetworkPath(network.list, (index) => index === entry, labels, mainLabel, gridSize, terrain, network.grid);
     if (!found) throw new Error("An entry on the main area must be reachable from the network.");
 
     for (const index of found.path) addToNetwork(network, index);
@@ -301,50 +349,69 @@ const placeEntries = (network: CorridorNetwork, roomGrid: Uint8Array, mainCells:
   return entries;
 };
 
-// BFS from the whole network at once across the main area; parents are
-// tracked per cell (-1 unvisited, -2 seed) to rebuild the shortest path.
-// Returns the landing (the first matching cell, which may be a seed) and the
-// path to it (seeds excluded, landing included), or null if unreachable.
-const findNetworkPath = (seeds: number[], isTarget: (index: number) => boolean, labels: Int32Array, mainLabel: number, gridSize: number): { path: number[]; landing: number } | null => {
+// Cheapest path from all seeds at once across the main area — Dijkstra over
+// the terrain cost field (bucket queue: costs are small integers), so paths
+// wander around expensive cells instead of running straight. Cells already in
+// the network cost the minimum, so new paths prefer merging into existing
+// corridors over running parallel to them. Parents are tracked per cell
+// (-1 unvisited, -2 seed) to rebuild the path. Returns the landing (the first
+// settled cell matching the target, which may be a seed), the origin (the
+// seed the winning path started from), and the path between them (seeds
+// excluded, landing included), or null if unreachable.
+const findNetworkPath = (seeds: number[], isTarget: (index: number) => boolean, labels: Int32Array, mainLabel: number, gridSize: number, terrain: Uint8Array, networkGrid: Uint8Array): { path: number[]; landing: number; origin: number } | null => {
   const width = latticeWidth(gridSize);
   const deltas = deltasOf(width);
   const parents = new Int32Array(width * width).fill(-1);
-  const queue: number[] = [];
+  const distances = new Int32Array(width * width).fill(-1);
+  const buckets: number[][] = [[]];
 
   for (const seed of seeds) {
+    if (distances[seed] === 0) continue;
     parents[seed] = -2;
-    queue.push(seed);
+    distances[seed] = 0;
+    buckets[0]!.push(seed);
   }
 
-  for (let head = 0; head < queue.length; head++) {
-    const current = queue[head]!;
+  for (let distance = 0; distance < buckets.length; distance++) {
+    const bucket = buckets[distance];
+    if (!bucket) continue;
 
-    if (isTarget(current)) {
-      const path: number[] = [];
-      let step = current;
-      while (parents[step] !== -2) {
-        path.push(step);
-        step = parents[step]!;
+    for (let i = 0; i < bucket.length; i++) {
+      const current = bucket[i]!;
+      if (distances[current] !== distance) continue; // superseded by a cheaper visit
+
+      if (isTarget(current)) {
+        const path: number[] = [];
+        let step = current;
+        while (parents[step] !== -2) {
+          path.push(step);
+          step = parents[step]!;
+        }
+        return { path: path.reverse(), landing: current, origin: step };
       }
-      return { path: path.reverse(), landing: current };
-    }
 
-    for (const delta of deltas) {
-      const neighbor = current + delta;
-      if (parents[neighbor] !== -1 || labels[neighbor] !== mainLabel) continue;
-      parents[neighbor] = current;
-      queue.push(neighbor);
+      for (const delta of deltas) {
+        const neighbor = current + delta;
+        if (labels[neighbor] !== mainLabel) continue;
+        const cost = networkGrid[neighbor] === 1 ? 1 : terrain[neighbor]!;
+        const total = distance + cost;
+        if (distances[neighbor] !== -1 && distances[neighbor]! <= total) continue;
+        distances[neighbor] = total;
+        parents[neighbor] = current;
+        while (buckets.length <= total) buckets.push([]);
+        buckets[total]!.push(neighbor);
+      }
     }
   }
 
   return null;
 };
 
-// On a floor, a room's entrance is the tile its corridor lands on — the seed
+// On a floor, a room's entrances are the tiles its corridors touch — the seed
 // used during generation loses the flag.
-const withDoor = (room: Room, doorIndex: number, width: number): Room => ({
+const withDoors = (room: Room, doorIndexes: Set<number>, width: number): Room => ({
   tileSet: room.tileSet,
-  tiles: room.tiles.map((tile) => ({ position: tile.position, isEntrance: toIndex(tile.position, width) === doorIndex })),
+  tiles: room.tiles.map((tile) => ({ position: tile.position, isEntrance: doorIndexes.has(toIndex(tile.position, width)) })),
 });
 
 const isInsideGrid = (index: number, width: number): boolean => {
