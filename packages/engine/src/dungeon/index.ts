@@ -18,6 +18,10 @@ export interface Dungeon {
   difficulty: Difficulty;
   levels: Floor[][];
   connections: Connection[];
+  // The door from the surface: the one entry no staircase consumes, on the
+  // first floor. A run starts here — without it, a first floor with a single
+  // entry would make the way in and the stairs down the same tile.
+  entrance: EntryRef;
 }
 
 // Depth is relative to the dungeon's total levels (0 = first, 1 = last).
@@ -80,6 +84,8 @@ export const generateDungeon = (difficulty: Difficulty, tileSet: TileSet): Dunge
   // dungeon a tree — every floor reachable — and fixes each floor's entry
   // count, so floors are generated with exactly as many entries as stairs.
   const entryCounts = floorCounts.map((count) => new Array<number>(count).fill(0));
+  entryCounts[0]![0]! += 1; // the surface door — see Dungeon.entrance
+
   const stairs: { upper: FloorIndex; lower: FloorIndex }[] = [];
 
   for (let level = 1; level < levelCount; level++) {
@@ -107,8 +113,9 @@ export const generateDungeon = (difficulty: Difficulty, tileSet: TileSet): Dunge
   };
 
   const connections = stairs.map(({ upper, lower }) => ({ from: takeEntry(upper), to: takeEntry(lower) }));
+  const entrance = takeEntry({ level: 0, floor: 0 });
 
-  return { difficulty, levels, connections };
+  return { difficulty, levels, connections, entrance };
 };
 
 interface FloorIndex {

@@ -65,22 +65,52 @@ describe("generateDungeon", () => {
     expect(hard.levels[29]![0]!.gridSize).toBe(200);
   });
 
-  it("should use every entry of every floor in exactly one connection, between adjacent levels", () => {
+  it("should use every entry except the entrance in exactly one connection, between adjacent levels", () => {
     for (const dungeon of [easy, medium, hard]) {
       const used = new Set<string>();
+      const refKey = (ref: { level: number; floor: number; entry: number }) => `${ref.level}/${ref.floor}/${ref.entry}`;
 
       for (const { from, to } of dungeon.connections) {
         expect(to.level).toBe(from.level + 1);
         for (const ref of [from, to]) {
-          const key = `${ref.level}/${ref.floor}/${ref.entry}`;
-          expect(used.has(key)).toBe(false);
-          used.add(key);
+          expect(used.has(refKey(ref))).toBe(false);
+          used.add(refKey(ref));
           expect(dungeon.levels[ref.level]?.[ref.floor]?.entries[ref.entry]).toBeDefined();
         }
       }
 
       const totalEntries = dungeon.levels.flat().reduce((sum, floor) => sum + floor.entries.length, 0);
-      expect(used.size).toBe(totalEntries);
+      expect(used.size).toBe(totalEntries - 1);
+      expect(used.has(refKey(dungeon.entrance))).toBe(false);
+    }
+  });
+
+  it("should reserve the entrance on the first floor, separate from the stairs down", () => {
+    for (const dungeon of [easy, medium, hard]) {
+      expect(dungeon.entrance.level).toBe(0);
+      expect(dungeon.entrance.floor).toBe(0);
+      expect(dungeon.levels[0]![0]!.entries[dungeon.entrance.entry]).toBeDefined();
+      // entrance plus at least one staircase down
+      expect(dungeon.levels[0]![0]!.entries.length).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it("should never make a single-floor level a dead end, except the last", () => {
+    for (const dungeon of [easy, medium, hard]) {
+      const lastLevel = dungeon.levels.length - 1;
+
+      for (let level = 1; level < lastLevel; level++) {
+        const floors = dungeon.levels[level]!;
+        const hasDown = (floor: number) => dungeon.connections.some(({ from }) => from.level === level && from.floor === floor);
+
+        // every floor already has stairs up by construction; a dead end is a
+        // floor without stairs down, allowed only next to a through floor
+        const throughFloors = floors.filter((_, floor) => hasDown(floor));
+        expect(throughFloors.length).toBeGreaterThanOrEqual(1);
+        if (floors.length === 1) {
+          expect(hasDown(0)).toBe(true);
+        }
+      }
     }
   });
 

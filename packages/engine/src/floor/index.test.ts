@@ -68,9 +68,13 @@ describe("generateFloor", () => {
 
       expect(floor.entries.length).toBe(entryCount);
       expect(entryKeys.size).toBe(entryCount);
+      const roomTiles = floor.rooms.flatMap((room) => room.tiles.map((tile) => tile.position));
       for (const entry of floor.entries) {
         expect(corridorKeys.has(toKey(entry))).toBe(true);
         expect(roomKeys.has(toKey(entry))).toBe(false);
+        // entries hug the rooms instead of dangling on bare corridor stubs
+        const distanceToNearestRoom = Math.min(...roomTiles.map((tile) => Math.abs(tile.x - entry.x) + Math.abs(tile.y - entry.y)));
+        expect(distanceToNearestRoom).toBeLessThanOrEqual(2);
       }
     }
   });

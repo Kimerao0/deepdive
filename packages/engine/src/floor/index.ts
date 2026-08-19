@@ -46,7 +46,7 @@ export const generateFloor = (size: Size, tileSet: TileSet, density: FloorDensit
   const { placed, roomGrid } = placeRooms(gridSize, tileSet, density);
   const { labels, mainLabel, mainCells } = labelFreePockets(roomGrid, placed, gridSize);
   const { rooms, network } = connectRooms(placed, labels, mainLabel, gridSize);
-  const entries = placeEntries(network, mainCells, labels, mainLabel, gridSize, entryCount);
+  const entries = placeEntries(network, roomGrid, mainCells, labels, mainLabel, gridSize, entryCount);
 
   return {
     gridSize,
@@ -230,13 +230,55 @@ const connectRooms = (placed: PlacedRoom[], labels: Int32Array, mainLabel: numbe
   return { rooms, network };
 };
 
-// Entries are random cells of the main area wired into the network by a
-// corridor path, so an entry always sits on a corridor tile and every entry
-// and room stays mutually reachable.
-const placeEntries = (network: CorridorNetwork, mainCells: number[], labels: Int32Array, mainLabel: number, gridSize: number, entryCount: number): number[] => {
+// Entries hug the rooms: a candidate cell is at most this many steps from a
+// room tile, so no entry dangles at the end of a bare corridor in the void.
+const ENTRY_ROOM_DISTANCE = 2;
+
+// Main-area cells within ENTRY_ROOM_DISTANCE steps of any room tile,
+// gathered by a bounded multi-source BFS from all room tiles at once.
+const entryCandidates = (roomGrid: Uint8Array, labels: Int32Array, mainLabel: number, gridSize: number): number[] => {
+  const width = latticeWidth(gridSize);
+  const deltas = deltasOf(width);
+  const depth = new Int32Array(width * width).fill(-1);
+  const queue: number[] = [];
+
+  for (let y = 0; y < gridSize; y++) {
+    for (let x = 0; x < gridSize; x++) {
+      const index = toIndex({ x, y }, width);
+      if (roomGrid[index] !== 1) continue;
+      for (const delta of deltas) {
+        const neighbor = index + delta;
+        if (labels[neighbor] !== mainLabel || depth[neighbor] !== -1) continue;
+        depth[neighbor] = 1;
+        queue.push(neighbor);
+      }
+    }
+  }
+
+  for (let head = 0; head < queue.length; head++) {
+    const current = queue[head]!;
+    if (depth[current]! >= ENTRY_ROOM_DISTANCE) continue;
+    for (const delta of deltas) {
+      const neighbor = current + delta;
+      if (labels[neighbor] !== mainLabel || depth[neighbor] !== -1) continue;
+      depth[neighbor] = depth[current]! + 1;
+      queue.push(neighbor);
+    }
+  }
+
+  return queue;
+};
+
+// Entries are random room-hugging cells wired into the network by a corridor
+// path, so an entry always sits on a corridor tile next to a room and every
+// entry and room stays mutually reachable.
+const placeEntries = (network: CorridorNetwork, roomGrid: Uint8Array, mainCells: number[], labels: Int32Array, mainLabel: number, gridSize: number, entryCount: number): number[] => {
   if (mainCells.length < entryCount) {
     throw new Error("Not enough free space to place all floor entries.");
   }
+
+  const candidates = entryCandidates(roomGrid, labels, mainLabel, gridSize);
+  const pool = candidates.length >= entryCount ? candidates : mainCells;
 
   const entries: number[] = [];
   const taken = new Set<number>();
@@ -244,7 +286,7 @@ const placeEntries = (network: CorridorNetwork, mainCells: number[], labels: Int
   for (let i = 0; i < entryCount; i++) {
     let entry = -1;
     while (entry === -1) {
-      const candidate = mainCells[randomInt(mainCells.length)]!;
+      const candidate = pool[randomInt(pool.length)]!;
       if (!taken.has(candidate)) entry = candidate;
     }
 

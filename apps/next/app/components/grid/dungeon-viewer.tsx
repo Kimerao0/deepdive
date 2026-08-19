@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { Dungeon, Floor } from "@deepdive/engine";
+import type { Coordinates, Dungeon, Floor } from "@deepdive/engine";
 
 export const DungeonViewer = ({ dungeon }: { dungeon: Dungeon }) => {
   const [levelIndex, setLevelIndex] = useState(0);
@@ -9,6 +9,8 @@ export const DungeonViewer = ({ dungeon }: { dungeon: Dungeon }) => {
 
   const level = dungeon.levels[levelIndex]!;
   const floor = level[floorIndex]!;
+  const isEntranceFloor = dungeon.entrance.level === levelIndex && dungeon.entrance.floor === floorIndex;
+  const entrance = isEntranceFloor ? floor.entries[dungeon.entrance.entry] : undefined;
 
   const goToLevel = (index: number) => {
     setLevelIndex(index);
@@ -33,12 +35,12 @@ export const DungeonViewer = ({ dungeon }: { dungeon: Dungeon }) => {
           </button>
         ))}
       </div>
-      <FloorGrid floor={floor} />
+      <FloorGrid floor={floor} entrance={entrance} />
     </div>
   );
 };
 
-const FloorGrid = ({ floor }: { floor: Floor }) => {
+const FloorGrid = ({ floor, entrance }: { floor: Floor; entrance: Coordinates | undefined }) => {
   const cellSize = floor.gridSize > 100 ? 4 : 8;
 
   const tileColors = new Map<string, string>();
@@ -52,6 +54,9 @@ const FloorGrid = ({ floor }: { floor: Floor }) => {
   }
   for (const cell of floor.entries) {
     tileColors.set(`${cell.x},${cell.y}`, "red");
+  }
+  if (entrance) {
+    tileColors.set(`${entrance.x},${entrance.y}`, "orange");
   }
 
   const cells = [];
