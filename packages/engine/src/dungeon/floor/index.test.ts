@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getNeighbors, toKey, type Coordinates } from "#coordinates/index";
-import { generateFloor } from "#dungeon/floor/index";
+import { generateFloor, isWalkable, type Floor } from "#dungeon/floor/index";
 import type { FloorDensity, Size } from "#dungeon/types";
 
 const isConnected = (positions: Coordinates[]): boolean => {
@@ -123,5 +123,46 @@ describe("generateFloor", () => {
     };
 
     expect(averageTiles("dense")).toBeGreaterThan(averageTiles("sparse"));
+  });
+});
+
+describe("isWalkable", () => {
+  // Hand-built so each answer is exact: one corridor cell that is also the
+  // floor's entry, one plain corridor cell, and a two-tile room beside them.
+  const floor: Floor = {
+    gridSize: 8,
+    corridors: [
+      { x: 1, y: 1 },
+      { x: 2, y: 1 },
+    ],
+    entries: [{ x: 1, y: 1 }],
+    rooms: [
+      {
+        tileSet: "castle",
+        tiles: [
+          { position: { x: 2, y: 2 }, isEntrance: true },
+          { position: { x: 3, y: 2 }, isEntrance: false },
+        ],
+      },
+    ],
+  };
+
+  it("should walk on corridors", () => {
+    expect(isWalkable(floor, { x: 2, y: 1 })).toBe(true);
+  });
+
+  it("should walk on an entry, which is a corridor cell", () => {
+    expect(isWalkable(floor, floor.entries[0]!)).toBe(true);
+  });
+
+  it("should walk on room tiles, doors included", () => {
+    expect(isWalkable(floor, { x: 2, y: 2 })).toBe(true);
+    expect(isWalkable(floor, { x: 3, y: 2 })).toBe(true);
+  });
+
+  it("should not walk on empty cells or outside the grid", () => {
+    expect(isWalkable(floor, { x: 5, y: 5 })).toBe(false);
+    expect(isWalkable(floor, { x: 1, y: 2 })).toBe(false);
+    expect(isWalkable(floor, { x: -1, y: 1 })).toBe(false);
   });
 });
