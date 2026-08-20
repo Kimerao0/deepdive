@@ -1,4 +1,4 @@
-import type { Coordinates } from "#coordinates/index";
+import { step, type Coordinates, type Direction } from "#coordinates/index";
 import { isWalkable } from "#dungeon/floor/index";
 import type { Dungeon } from "#dungeon/index";
 
@@ -17,7 +17,7 @@ export interface WorldState {
 
 export interface Action {
   type: "move";
-  direction: "north" | "south" | "east" | "west";
+  direction: Direction;
 }
 
 export type RejectionReason = "blocked";
@@ -33,14 +33,6 @@ interface ActionFailure {
 
 export type ActionResult = ActionSuccess | ActionFailure;
 
-// The grid is drawn with y = 0 as its top row, so north decreases y.
-const DIRECTION_DELTAS: Record<Action["direction"], Coordinates> = {
-  north: { x: 0, y: -1 },
-  south: { x: 0, y: 1 },
-  east: { x: 1, y: 0 },
-  west: { x: -1, y: 0 },
-};
-
 export const applyAction = (dungeon: Dungeon, world: WorldState, action: Action): ActionResult => {
   const currentLevel = dungeon.levels[world.playerParty.level];
   if (!currentLevel) {
@@ -51,11 +43,7 @@ export const applyAction = (dungeon: Dungeon, world: WorldState, action: Action)
     throw new Error(`Floor ${world.playerParty.floor} does not exist on level ${world.playerParty.level}`);
   }
 
-  const delta = DIRECTION_DELTAS[action.direction];
-  const target: Coordinates = {
-    x: world.playerParty.position.x + delta.x,
-    y: world.playerParty.position.y + delta.y,
-  };
+  const target: Coordinates = step(world.playerParty.position, action.direction);
 
   if (!isWalkable(partyCurrentFloor, target)) {
     return { ok: false, reason: "blocked" };

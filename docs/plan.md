@@ -37,7 +37,13 @@ A `WorldState` holding the dungeon, the player (position, level/floor indices, v
 
 ### 2. Visibility in the engine
 
-A function that, given a floor and the player, produces the **view**: every tile within the visibility radius, classified (room, door, corridor, entry, empty), plus the player position. This is the only payload shape the client will ever receive for the map. The engine also exposes the view-level twin of `apply` here — the client's optimistic reducer works on a view, not a `WorldState`, and both sides must share the same walkability rules or prediction silently diverges. Done when: view size and content are pinned by tests, including radius changes and floor edges, and the view-level apply agrees with the world-level one on every move inside the view.
+A function that, given a floor and the player, produces the **view**: every tile within the visibility radius, classified (room, door, corridor, entry, empty), plus the player position. This is the only payload shape the client will ever receive for the map.
+
+**The wire never carries a tile the player could not see** — exactly the visibility radius, no margin. A predicted move therefore leaves the newly revealed outer ring unknown until the authoritative response lands, and the client renders it dark for those few milliseconds. The alternative (sending radius + 1 so prediction covers the reveal) was rejected: a reader of the response would know something the party does not.
+
+The engine also exposes the view-level twin of `apply` here — the client's optimistic reducer works on a view, not a `WorldState`, and both sides must share the same walkability rule or prediction silently diverges. That twin needs **three** outcomes, not two: walkable, blocked, and *unknown*. Prediction reaches at most `visibilityRadius` steps ahead, so held-down keys eventually target a tile the client knows nothing about; on `unknown` the client stops predicting and waits for the server. Collapsing `unknown` into `blocked` would be a real bug, not a cosmetic one: locally rejected moves are never dispatched, so a false rejection would silently swallow a legal action.
+
+Done when: view size and content are pinned by tests, including radius changes and floor edges; the view-level apply agrees with the world-level one on every move inside the view; and a move targeting a tile outside the view reports `unknown` rather than `blocked`.
 
 ### 3. Run lifecycle on the server
 
