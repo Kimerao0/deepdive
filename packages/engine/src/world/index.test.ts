@@ -18,12 +18,7 @@ const START: Coordinates = { x: 2, y: 2 };
 
 const floor: Floor = {
   gridSize: 8,
-  corridors: [
-    { x: 2, y: 1 },
-    START,
-    { x: 3, y: 2 },
-    { x: 4, y: 2 },
-  ],
+  corridors: [{ x: 2, y: 1 }, START, { x: 3, y: 2 }, { x: 4, y: 2 }],
   entries: [{ x: 2, y: 1 }],
   rooms: [
     {
